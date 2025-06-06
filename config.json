@@ -1,0 +1,118 @@
+{
+  "defaults": {
+      "max_tokens": 4096,
+      "timeout": 120,
+      "cache_size": 2,
+      "memory_threshold_gb": 2.0
+  },
+  "models": {
+      "mlx-community/Llama-3.3-70B-Instruct-8bit": {
+          "max_tokens": 4096,
+          "temp": 0.7,
+          "top_p": 0.95,
+          "top_k": 40,
+          "min_p": 0.03,
+          "chat_template": "llama3",
+          "required_memory_gb": 45,
+          "memory_pressure_max_tokens": {
+              "normal": 2048,
+              "moderate": 1024,
+              "high": 512,
+              "critical": 256
+          }
+      },
+      "mlx-community/Llama-3.2-3B-Instruct-4bit": {
+          "max_tokens": 4096, 
+          "temp": 0.7, 
+          "top_p": 0.95, 
+          "top_k": 50, 
+          "min_p": 0.05,
+          "chat_template": "llama3",
+          "required_memory_gb": 3,
+          "memory_pressure_max_tokens": {
+              "normal": 4096,
+              "moderate": 2048,
+              "high": 1024,
+              "critical": 512
+          }
+      },
+      "mlx-community/DeepSeek-R1-0528-Qwen3-8B-8bit": {
+          "max_tokens": 8192, 
+          "temp": 0.6, 
+          "top_p": 0.95, 
+          "top_k": 50,
+          "min_p": 0.01,
+          "chat_template": "deepseek",
+          "required_memory_gb": 8,
+          "memory_pressure_max_tokens": {
+              "normal": 8192,
+              "moderate": 4096,
+              "high": 2048,
+              "critical": 1024
+          }
+      },
+      "mlx-community/DeepSeek-R1-0528-Qwen3-8B-bf16": {
+          "max_tokens": 8192, 
+          "temp": 0.6, 
+          "top_p": 0.95, 
+          "top_k": 50, 
+          "min_p": 0.01,
+          "chat_template": "deepseek",
+          "required_memory_gb": 16,
+          "memory_pressure_max_tokens": {
+              "normal": 8192,
+              "moderate": 4096,
+              "high": 2048,
+              "critical": 1024
+          }
+      },
+      "deepseek-ai/deepseek-coder-6.7b-instruct": {
+          "max_tokens": 4096, 
+          "temp": 0.2, 
+          "top_p": 0.95, 
+          "top_k": 40, 
+          "min_p": 0.05,
+          "chat_template": "deepseek",
+          "required_memory_gb": 7,
+          "memory_pressure_max_tokens": {
+              "normal": 4096,
+              "moderate": 2048,
+              "high": 1024,
+              "critical": 512
+          }
+      },
+      "mlx-community/Qwen3-30B-A3B-8bit": {
+          "max_tokens": 8192, 
+          "temp": 0.7, 
+          "top_p": 0.9, 
+          "top_k": 40, 
+          "min_p": 0.05,
+          "chat_template": "qwen",
+          "required_memory_gb": 20,
+          "memory_pressure_max_tokens": {
+              "normal": 8192,
+              "moderate": 4096,
+              "high": 2048,
+              "critical": 1024
+          }
+      },
+      "mlx-community/Phi-4-reasoning-plus-6bit": {
+          "max_tokens": 4096, 
+          "temp": 0.8, 
+          "top_p": 0.95, 
+          "top_k": 40, 
+          "min_p": 0.05,
+          "chat_template": "phi4",
+          "required_memory_gb": 8,
+          "memory_pressure_max_tokens": {
+              "normal": 4096,
+              "moderate": 2048,
+              "high": 2048,
+              "critical": 512
+          }
+      }
+  },
+  "default_model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+  "stream_chunk_size": 32,
+  "warmup_tokens": 5
+}
