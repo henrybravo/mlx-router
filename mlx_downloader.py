@@ -145,23 +145,44 @@ def remove_model(model_name):
         print(f"❌ Failed to remove {model_name}: {e}")
         return False
 
+def discover_local_models():
+    """Discover all downloaded models in cache directory"""
+    cache_path = get_cache_path()
+    models = []
+    
+    if not cache_path.exists():
+        return models
+    
+    # Look for model directories (format: models--org--model)
+    for model_dir in cache_path.glob("models--*"):
+        if model_dir.is_dir():
+            # Convert directory name back to model name format
+            # "models--mlx-community--Llama-3.2-3B-Instruct-4bit" -> "mlx-community/Llama-3.2-3B-Instruct-4bit"
+            dir_name = model_dir.name
+            if dir_name.startswith("models--"):
+                model_name = dir_name[8:]  # Remove "models--" prefix
+                # Split on "--" and rejoin properly: org/model-name-parts
+                parts = model_name.split("--")
+                if len(parts) >= 2:
+                    # First part is organization, rest is model name with dashes
+                    org = parts[0]
+                    model_parts = parts[1:]
+                    model_name = f"{org}/{'-'.join(model_parts)}"
+                    models.append(model_name)
+    
+    return sorted(models)
+
 def list_mlx_models():
-    """Show popular MLX community models with status"""
+    """Show all downloaded MLX models with status"""
     
-    models = [
-        "mlx-community/Llama-3.3-70B-Instruct-8bit",
-        "mlx-community/Llama-3.2-3B-Instruct-4bit", 
-        "mlx-community/Llama-3.2-1B-Instruct-4bit",
-        "mlx-community/DeepSeek-R1-0528-Qwen3-8B-8bit",
-        "mlx-community/DeepSeek-R1-0528-Qwen3-8B-bf16",
-        "mlx-community/Qwen3-30B-A3B-8bit",
-        "mlx-community/Qwen2.5-7B-Instruct-4bit",
-        "mlx-community/Phi-4-reasoning-plus-6bit",
-        "mlx-community/gemma-2-9b-it-4bit",
-        "deepseek-ai/deepseek-coder-6.7b-instruct"
-    ]
+    models = discover_local_models()
     
-    print("📋 Popular MLX Models:")
+    if not models:
+        print("📋 No MLX models found in cache directory")
+        print(f"   Cache path: {get_cache_path()}")
+        return models
+    
+    print(f"📋 Downloaded MLX Models ({len(models)} found):")
     for i, model in enumerate(models, 1):
         status, _, incomplete_files = get_model_status(model)
         status_emoji = {
@@ -189,13 +210,13 @@ def main():
     if len(sys.argv) < 2:
         print("Enhanced MLX Model Downloader")
         print("Usage:")
-        print("  python3 mlx_downloader.py <model_name>     # Download specific model")
-        print("  python3 mlx_downloader.py list             # List models with status")
-        print("  python3 mlx_downloader.py download <num>   # Download by number")
-        print("  python3 mlx_downloader.py status <model>   # Check model status")
-        print("  python3 mlx_downloader.py clean <model>    # Clean incomplete files")
-        print("  python3 mlx_downloader.py remove <model>   # Remove model completely")
-        print("  python3 mlx_downloader.py clean-all        # Clean all incomplete files")
+        print("  python3 mlx_downloader.py <model_name>        # Download specific model")
+        print("  python3 mlx_downloader.py list                # List downloaded models with status")
+        print("  python3 mlx_downloader.py download <num>      # Download by number from list")
+        print("  python3 mlx_downloader.py status <model|num>  # Check model status")
+        print("  python3 mlx_downloader.py clean <model|num>   # Clean incomplete files")
+        print("  python3 mlx_downloader.py remove <model|num>  # Remove model completely")
+        print("  python3 mlx_downloader.py clean-all           # Clean all incomplete files")
         print("")
         list_mlx_models()
         return
@@ -207,18 +228,11 @@ def main():
         
     elif command == "download" and len(sys.argv) == 3:
         try:
-            models = [
-                "mlx-community/Llama-3.3-70B-Instruct-8bit",
-                "mlx-community/Llama-3.2-3B-Instruct-4bit", 
-                "mlx-community/Llama-3.2-1B-Instruct-4bit",
-                "mlx-community/DeepSeek-R1-0528-Qwen3-8B-8bit",
-                "mlx-community/DeepSeek-R1-0528-Qwen3-8B-bf16",
-                "mlx-community/Qwen3-30B-A3B-8bit",
-                "mlx-community/Qwen2.5-7B-Instruct-4bit",
-                "mlx-community/Phi-4-reasoning-plus-6bit",
-                "mlx-community/gemma-2-9b-it-4bit",
-                "deepseek-ai/deepseek-coder-6.7b-instruct"
-            ]
+            models = discover_local_models()
+            if not models:
+                print("❌ No models found in cache directory. Use direct model name to download new models.")
+                return
+            
             index = int(sys.argv[2]) - 1
             if 0 <= index < len(models):
                 model_name = models[index]
@@ -231,7 +245,25 @@ def main():
             print("❌ Please provide a valid number")
     
     elif command == "status" and len(sys.argv) == 3:
-        model_name = sys.argv[2]
+        model_arg = sys.argv[2]
+        
+        # Check if it's a number (index) or model name
+        try:
+            index = int(model_arg) - 1
+            models = discover_local_models()
+            if not models:
+                print("❌ No models found in cache directory")
+                return
+            
+            if 0 <= index < len(models):
+                model_name = models[index]
+            else:
+                print(f"❌ Invalid number. Choose 1-{len(models)}")
+                return
+        except ValueError:
+            # Not a number, treat as model name
+            model_name = model_arg
+        
         status, model_path, files = get_model_status(model_name)
         print(f"📊 Status for {model_name}: {status}")
         if model_path:
@@ -242,11 +274,46 @@ def main():
                 print(f"   Incomplete files: {[f.name for f in files]}")
     
     elif command == "clean" and len(sys.argv) == 3:
-        model_name = sys.argv[2]
-        clean_incomplete_model(model_name)
+        model_arg = sys.argv[2]
+        
+        # Check if it's a number (index) or model name
+        try:
+            index = int(model_arg) - 1
+            models = discover_local_models()
+            if not models:
+                print("❌ No models found in cache directory")
+                return
+            
+            if 0 <= index < len(models):
+                model_name = models[index]
+                clean_incomplete_model(model_name)
+            else:
+                print(f"❌ Invalid number. Choose 1-{len(models)}")
+        except ValueError:
+            # Not a number, treat as model name
+            model_name = model_arg
+            clean_incomplete_model(model_name)
     
     elif command == "remove" and len(sys.argv) == 3:
-        model_name = sys.argv[2]
+        model_arg = sys.argv[2]
+        
+        # Check if it's a number (index) or model name
+        try:
+            index = int(model_arg) - 1
+            models = discover_local_models()
+            if not models:
+                print("❌ No models found in cache directory")
+                return
+            
+            if 0 <= index < len(models):
+                model_name = models[index]
+            else:
+                print(f"❌ Invalid number. Choose 1-{len(models)}")
+                return
+        except ValueError:
+            # Not a number, treat as model name
+            model_name = model_arg
+        
         confirm = input(f"⚠️  Are you sure you want to completely remove {model_name}? (y/N): ")
         if confirm.lower() == 'y':
             remove_model(model_name)
@@ -254,18 +321,11 @@ def main():
             print("❌ Cancelled")
     
     elif command == "clean-all":
-        models = [
-            "mlx-community/Llama-3.3-70B-Instruct-8bit",
-            "mlx-community/Llama-3.2-3B-Instruct-4bit", 
-            "mlx-community/Llama-3.2-1B-Instruct-4bit",
-            "mlx-community/DeepSeek-R1-0528-Qwen3-8B-8bit",
-            "mlx-community/DeepSeek-R1-0528-Qwen3-8B-bf16",
-            "mlx-community/Qwen3-30B-A3B-8bit",
-            "mlx-community/Qwen2.5-7B-Instruct-4bit",
-            "mlx-community/Phi-4-reasoning-plus-6bit",
-            "mlx-community/gemma-2-9b-it-4bit",
-            "deepseek-ai/deepseek-coder-6.7b-instruct"
-        ]
+        models = discover_local_models()
+        if not models:
+            print("❌ No models found in cache directory")
+            return
+        
         cleaned_count = 0
         for model in models:
             if clean_incomplete_model(model):
