@@ -551,7 +551,7 @@ class MLXModelManager:
             return self._format_llama3_messages(messages)
         elif chat_template_name == "deepseek":
             return self._format_deepseek_messages(messages)
-        elif chat_template_name == "qwen":
+        elif chat_template_name == "qwen" or chat_template_name == "chatml":
             return self._format_qwen_messages(messages)
         elif chat_template_name == "phi4":
             return self._format_phi4_messages(messages)
