@@ -111,7 +111,8 @@ def get_model_status(model_name):
 
 def clean_incomplete_model(model_name):
     """Clean incomplete downloads for a model"""
-    status, _, incomplete_files = get_model_status(model_name)
+    status, _, files = get_model_status(model_name)
+    incomplete_files = files if status == "incomplete" else []
     
     if status == "incomplete":
         print(f"🧹 Cleaning {len(incomplete_files)} incomplete files for {model_name}")
@@ -184,7 +185,8 @@ def list_mlx_models():
     
     print(f"📋 Downloaded MLX Models ({len(models)} found):")
     for i, model in enumerate(models, 1):
-        status, _, incomplete_files = get_model_status(model)
+        status, _, files = get_model_status(model)
+        incomplete_files = files if status == "incomplete" else []
         status_emoji = {
             "complete": "✅",
             "incomplete": "⚠️ ",
