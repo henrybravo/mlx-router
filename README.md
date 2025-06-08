@@ -1,21 +1,23 @@
 # mlx-project
 Useful scripts to ease the use of mlx
 
-## MLX Model Router
+## MLX Model Router v2.0.0
 
-A powerful and efficient server for managing and serving multiple MLX models through a unified API interface. This project provides a simple way to load, switch between, and serve different MLX models with optimized performance.
+A powerful and efficient server for managing and serving multiple MLX models through a unified API interface. Now powered by **FastAPI** for modern, high-performance API handling with automatic OpenAPI documentation.
 
 ![mlx-router](images/mlx-router-help-menu.png)
 
 ## Features
 
-- 🚀 Serve multiple MLX models through a single API endpoint
+- 🚀 **FastAPI-powered** - Modern async API with automatic documentation
 - 🔄 Hot-swap between different models without server restart
 - ⚡ MLX-optimized performance with GPU acceleration
 - 🔒 Automatic memory management and cleanup
-- 🎯 Compatible with OpenAI-style API endpoints
+- 🎯 **Full OpenAI API compatibility** - Drop-in replacement for OpenAI endpoints
 - ⏱️ Built-in timeout protection and error handling
-- 📊 Comprehensive logging system
+- 📊 Comprehensive logging system with rotation
+- 🏗️ **Modular architecture** - Clean separation of concerns
+- 📖 **Interactive API docs** - Automatic Swagger/OpenAPI documentation
 
 ## Supported Models
 
@@ -28,22 +30,39 @@ Any mlx model that is available locally and added to the list (in the script). A
 - `deepseek-ai/deepseek-coder-6.7b-instruct`
 - `mlx-community/Phi-4-reasoning-plus-6bit`
 
-You can use the `--config` argument that will override the model configuration in `mlx_router.py` if used.
+You can use the `--config` argument to load external model configurations from `config.json`.
 
-You can use the `mlx_downloader.py` script to download the models.
+You can use the helper tools in `helper_tools/` directory:
+- `mlx_downloader.py` - Download MLX models
+- `mlx_lmstudio_linker.py` - Link models to LM Studio
+- `mlx_model_parameter_discovery_tool.py` - Auto-discover optimal parameters
 
-## Key Architecture Components
+## Architecture v2.0.0
 
-### Core Server (`mlx_router.py`)
+The project now features a clean modular architecture:
+
+### Package Structure
+```
+mlx_router/
+├── config/          # Configuration management
+│   └── model_config.py
+├── core/            # Core MLX logic
+│   ├── model_manager.py
+│   └── resource_monitor.py
+└── api/             # FastAPI application
+    └── app.py
+```
+
+### Core Components
 - **MLXModelManager**: Central class managing model loading, unloading, and generation with thread-safe operations
-- **APIHandler**: HTTP request handler implementing OpenAI-compatible endpoints (`/v1/models`, `/v1/chat/completions`)
-- **ModelConfig**: Static configuration class defining model-specific parameters (max_tokens, temperature, chat templates)
+- **ModelConfig**: Configuration management for model-specific parameters
 - **ResourceMonitor**: Apple Silicon memory monitoring and optimization
+- **FastAPI App**: Modern HTTP API with automatic documentation
 
 ### Configuration System
 - **config.json**: External configuration file for model parameters, defaults, and operational settings
-- **ModelConfig.MODELS**: Hardcoded model configurations with chat templates and resource requirements
 - Model-specific parameters include: max_tokens, temperature, top_p, top_k, min_p, chat_template, required_memory_gb
+- Memory pressure-aware token limits for different system states
 
 ### Chat Template System
 The router supports multiple chat template formats:
@@ -65,7 +84,7 @@ The router supports multiple chat template formats:
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/henrybravo/mlx-project.git
 cd mlx-project
 ```
 
@@ -79,24 +98,36 @@ uv pip install -r requirements.txt
 
 ## Usage
 
-1. Open the help menu:
+*Optionally: view help menu first:*
 ```bash
-python mlx_router.py -h 
+python main.py -h
 ```
 
-2. Start the server:
+1. Start the server:
 ```bash
-python mlx_router.py
+python main.py --config config.json
 ```
 
+2. **Interactive API Documentation:**
 The server will start on `http://0.0.0.0:8800` by default.
+- **Swagger UI**: http://localhost:8800/docs
+- **ReDoc**: http://localhost:8800/redoc
 
-3. API Endpoints:
+### API Endpoints
 
-- `GET /v1/models` - List available models
-- `POST /v1/chat/completions` - Generate completions
+- `GET /v1/models` - List available models with memory requirements
+- `POST /v1/chat/completions` - Generate chat completions (OpenAI compatible)
+- `GET /health` - Server health check
+- `GET /v1/health` - Detailed health metrics
 
-Example API request:
+### Example API Usage
+
+**List Models:**
+```bash
+curl -s http://localhost:8800/v1/models | jq
+```
+
+**Chat Completion:**
 ```bash
 curl -s -X POST http://localhost:8800/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -104,21 +135,60 @@ curl -s -X POST http://localhost:8800/v1/chat/completions \
     "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
     "messages": [
       {"role": "user", "content": "Hello, how are you?"}
-    ]
+    ],
+    "temperature": 0.7,
+    "max_tokens": 1000
   }' | jq
+```
+
+**Health Check:**
+```bash
+curl -s http://localhost:8800/health | jq
 ```
 
 ## Configuration
 
-The server includes several optimizations for each configured model and you can override and expand by using a config file.
+The `config.json` file allows you to:
+- Define model-specific parameters (temperature, max_tokens, etc.)
+- Set memory pressure thresholds for different system states
+- Configure default values and operational settings
+- Add new models with custom chat templates
+
+Example configuration structure:
+```json
+{
+  "defaults": {
+    "max_tokens": 4096,
+    "timeout": 120
+  },
+  "models": {
+    "model-name": {
+      "max_tokens": 8192,
+      "temp": 0.7,
+      "chat_template": "llama3",
+      "required_memory_gb": 8
+    }
+  }
+}
+```
+
+## What's New in v2.0.0
+
+- **FastAPI Integration** - Modern async API framework with automatic documentation
+- **Modular Architecture** - Clean separation into config/, core/, and api/ modules
+- **Enhanced Error Handling** - Comprehensive HTTP status codes and error responses
+- **Interactive Documentation** - Built-in Swagger UI and ReDoc interfaces
+- **Improved Performance** - Async request handling and optimized memory management
+- **Better Monitoring** - Enhanced health endpoints with detailed system metrics
 
 ## Logging
 
-Logs are written to both console and `mlx_router.log` file, providing detailed information about i.e.:
-- Model loading/unloading
-- API requests
-- Generation statistics
-- Error tracking
+Logs are written to both console and `logs/mlx_router.log` file with rotation, providing detailed information about:
+- Model loading/unloading with timing metrics
+- API requests with unique request IDs
+- Generation statistics and performance metrics
+- Memory pressure monitoring and adjustments
+- Comprehensive error tracking with stack traces
 
 ## Contributing
 
