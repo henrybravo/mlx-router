@@ -1,0 +1,8 @@
+2025-06-08 11:29:20,643 - __main__ - INFO - Starting MLX Router v2.0.1 (Release Date: 20250607) by Henry Bravo - info@henrybravo.nl (https://github.com/henrybravo/mlx-router)
+2025-06-08 11:29:20,643 - __main__ - INFO - MLX default device set to GPU.
+2025-06-08 11:29:20,643 - __main__ - INFO - Loaded configuration from config.json
+2025-06-08 11:29:20,643 - mlx_router.config.model_config - INFO - Updated ModelConfig with 8 model configurations
+2025-06-08 11:29:20,643 - mlx_router.core.model_manager - INFO - Validated 8 available models
+2025-06-08 11:29:20,643 - __main__ - INFO - Attempting to preload default model: mlx-community/Llama-3.2-3B-Instruct-4bit
+2025-06-08 11:29:20,643 - mlx_router.core.model_manager - INFO - 🔄 Loading model: mlx-community/Llama-3.2-3B-Instruct-4bit
+2025-06-08 11:29:21,560 - mlx_router.core.model_manager - INFO - ✅ Loaded mlx-community/Llama-3.2-3B-Instruct-4bit in 0.92s (Memory: 54.1%)
