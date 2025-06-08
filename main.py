@@ -20,7 +20,7 @@ from mlx_router.config.model_config import ModelConfig
 from mlx_router.api.app import app, set_model_manager
 
 # Version information
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 RELEASE_DATE = "20250607"
 AUTHOR = "Henry Bravo - info@henrybravo.nl"
 
@@ -61,7 +61,41 @@ def print_banner():
     print(f"\033[1;32m{AUTHOR}\033[0m\n")
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="MLX Model Router")
+    class BannerHelpFormatter(argparse.RawDescriptionHelpFormatter):
+        def __init__(self, prog, indent_increment=2, max_help_position=40, width=None):
+            # Get terminal width or use a reasonable default
+            if width is None:
+                try:
+                    import shutil
+                    width = min(shutil.get_terminal_size().columns, 120)
+                except:
+                    width = 100
+            super().__init__(prog, indent_increment, max_help_position, width)
+        
+        def format_help(self):
+            print_banner()
+            return super().format_help()
+        
+    parser = argparse.ArgumentParser(
+            description="""
+MLX Model Router - A powerful server for managing and serving multiple MLX models.
+This server provides a unified FastAPI interface for various MLX models, allowing hot-swapping
+between different models without restarting the server.
+            """,
+            formatter_class=BannerHelpFormatter,
+            epilog="""
+Examples:
+  # Start server with default settings
+  python main.py
+
+  # Start server on specific IP and port
+  python main.py --ip 127.0.0.1 -p 8080
+
+  # Start server with config file and specific port
+  python main.py --config config.json --port 8888
+            """
+    )
+
     parser.add_argument("-v", "--version", action="store_true", help="Display version and exit")
     parser.add_argument("--ip", default="0.0.0.0", help="IP address (default: 0.0.0.0)")
     parser.add_argument("--port", "-p", type=int, default=8800, help="Port (default: 8800)")

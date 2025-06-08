@@ -1,7 +1,7 @@
 # mlx-project
 Useful scripts to ease the use of mlx
 
-## MLX Model Router v2.0.0
+## MLX Model Router v2
 
 A powerful and efficient server for managing and serving multiple MLX models through a unified API interface. Now powered by **FastAPI** for modern, high-performance API handling with automatic OpenAPI documentation.
 
@@ -37,7 +37,7 @@ You can use the helper tools in `helper_tools/` directory:
 - `mlx_lmstudio_linker.py` - Link models to LM Studio
 - `mlx_model_parameter_discovery_tool.py` - Auto-discover optimal parameters
 
-## Architecture v2.0.0
+## Architecture v2.0
 
 The project now features a clean modular architecture:
 
@@ -172,7 +172,7 @@ Example configuration structure:
 }
 ```
 
-## What's New in v2.0.0
+## What's New in v2.0
 
 - **FastAPI Integration** - Modern async API framework with automatic documentation
 - **Modular Architecture** - Clean separation into config/, core/, and api/ modules
