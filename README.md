@@ -5,7 +5,7 @@ Useful scripts to ease the use of mlx
 
 A powerful and efficient server for managing and serving multiple MLX models through a unified API interface. This project provides a simple way to load, switch between, and serve different MLX models with optimized performance.
 
-![mlx-router](mlx-router-help-menu.png)
+![mlx-router](images/mlx-router-help-menu.png)
 
 ## Features
 
@@ -53,7 +53,7 @@ The router supports multiple chat template formats:
 - `phi4`: Phi-4 models with `<|user|>/<|assistant|>` format
 - `generic`: Fallback template
 
-![mlx-router-health-api](mlx-router-health-api.png)
+![mlx-router-health-api](images/mlx-router-health-api.png)
 
 ## Prerequisites
 

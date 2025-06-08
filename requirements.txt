@@ -4,3 +4,4 @@ huggingface-hub>=0.20.0
 # mlx-audio>=0.2.0 - only install if you need tts, stt
 pyfiglet>=1.0.0
 psutil>=7.0.0
+fastapi[all]>=0.115.0

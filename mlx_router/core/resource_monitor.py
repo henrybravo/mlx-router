@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""
+Resource monitoring for Apple Silicon optimization
+"""
+
+import time
+import logging
+import psutil
+from mlx_router.config.model_config import ModelConfig
+
+logger = logging.getLogger(__name__)
+
+class ResourceMonitor:
+    """Monitor system resources for Apple Silicon optimization"""
+    _last_memory_check = 0
+    _cached_memory_info = None
+    _memory_cache_duration = 2.0
+    
+    @staticmethod
+    def get_memory_info(use_cache=True):
+        current_time = time.time()
+        if (use_cache and ResourceMonitor._cached_memory_info and 
+            current_time - ResourceMonitor._last_memory_check < ResourceMonitor._memory_cache_duration):
+            return ResourceMonitor._cached_memory_info
+        
+        memory = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        memory_info = {
+            "total_gb": memory.total / (1024**3),
+            "available_gb": memory.available / (1024**3),
+            "used_gb": memory.used / (1024**3),
+            "used_percent": memory.percent,
+            "free_gb": memory.free / (1024**3),
+            "buffers_gb": getattr(memory, 'buffers', 0) / (1024**3),
+            "cached_gb": getattr(memory, 'cached', 0) / (1024**3),
+            "swap_total_gb": swap.total / (1024**3),
+            "swap_used_gb": swap.used / (1024**3),
+            "swap_percent": swap.percent,
+            "fragmentation_score": ResourceMonitor._calculate_fragmentation_score(memory)
+        }
+        ResourceMonitor._cached_memory_info = memory_info
+        ResourceMonitor._last_memory_check = current_time
+        return memory_info
+    @staticmethod
+    def _calculate_fragmentation_score(memory):
+        """Calculate a simple fragmentation score (0-100, lower is better)"""
+        # Simple heuristic: high fragmentation when available memory is much less than free memory
+        if hasattr(memory, 'free') and memory.available > 0:
+            # If available is much less than free, suggests fragmentation
+            fragmentation_ratio = 1.0 - (memory.available / max(memory.free + getattr(memory, 'buffers', 0) + getattr(memory, 'cached', 0), memory.available))
+            return min(100, max(0, fragmentation_ratio * 100))
+        return 0  # Unable to calculate
+    
+    @staticmethod
+    def check_memory_available(model_name, safety_margin=1.5):
+        """Check if sufficient memory is available for the specified model"""
+        required_gb = ModelConfig.get_config(model_name).get("required_memory_gb", 8)
+        info = ResourceMonitor.get_memory_info()
+        
+        # Apply safety margin and consider fragmentation
+        effective_required = required_gb * safety_margin
+        
+        # Reduce fragmentation penalty if we have abundant memory
+        fragmentation_penalty = 1.0
+        if info["fragmentation_score"] > 50:
+            if info["available_gb"] > required_gb * 4:  # Abundant memory
+                fragmentation_penalty = 1.1  # Minimal penalty
+            elif info["available_gb"] > required_gb * 2:  # Sufficient memory
+                fragmentation_penalty = 1.15  # Small penalty
+            else:
+                fragmentation_penalty = 1.2  # Standard penalty
+            logger.debug(f"Memory fragmentation detected ({info['fragmentation_score']:.1f}), applying {fragmentation_penalty}x penalty")
+        
+        effective_required *= fragmentation_penalty
+        
+        return info["available_gb"] >= effective_required
+    @staticmethod
+    def get_memory_pressure():
+        """Get memory pressure level for Apple Silicon optimization"""
+        info = ResourceMonitor.get_memory_info()
+        if info["used_percent"] > 90 or info["swap_percent"] > 50: return "critical"
+        elif info["used_percent"] > 80 or info["swap_percent"] > 25: return "high"
+        elif info["used_percent"] > 70: return "moderate"
+
+        return "normal"
+    
+    @staticmethod
+    def get_memory_pressure_max_tokens(model_name, pressure_level):
+        """Get max tokens for current memory pressure level"""
+        model_config = ModelConfig.get_config(model_name)
+        pressure_tokens = model_config.get("memory_pressure_max_tokens", {})
+        
+        if pressure_level in pressure_tokens:
+            return pressure_tokens[pressure_level]
+        
+        # Fallback to standard max_tokens if no pressure-specific config
+        return model_config.get("max_tokens", 4096)
+    
+    @staticmethod
+    def should_defer_model_load(model_name):
+        """Check if model loading should be deferred due to memory pressure"""
+        pressure = ResourceMonitor.get_memory_pressure()
+        info = ResourceMonitor.get_memory_info(use_cache=False)  # Fresh info for loading decisions
+        required_gb = ModelConfig.get_config(model_name).get("required_memory_gb", 8)
+        
+        # Dynamic swap threshold based on available memory
+        # If we have abundant RAM (>50GB available), be more lenient with swap usage
+        swap_threshold = 95 if info["available_gb"] > 50 else 90 if info["available_gb"] > 20 else 50
+        
+        # Consider swap usage as additional pressure indicator, but with dynamic thresholds
+        if info["swap_percent"] > swap_threshold:
+            return True, f"High swap usage ({info['swap_percent']:.1f}% > {swap_threshold}%) indicates memory pressure"
+        
+        # Bypass memory pressure checks if we have abundant available RAM for the model
+        if info["available_gb"] > required_gb * 3:  # 3x safety margin means we can bypass some restrictions
+            logger.debug(f"Abundant memory available ({info['available_gb']:.1f}GB > {required_gb * 3}GB), bypassing pressure checks")
+            return False, f"Abundant memory available ({info['available_gb']:.1f}GB)"
+        
+        # More aggressive memory checking with fragmentation consideration
+        if pressure == "critical":
+            # Even in critical pressure, allow loading if we have enough available memory
+            if info["available_gb"] > required_gb * 2:
+                logger.warning(f"Critical pressure but sufficient memory available ({info['available_gb']:.1f}GB > {required_gb * 2}GB), allowing load")
+                return False, f"Critical pressure bypassed due to sufficient available memory"
+            return True, f"Critical memory pressure ({info['used_percent']:.1f}%)"
+        elif pressure == "high":
+            if not ResourceMonitor.check_memory_available(model_name, safety_margin=1.2):  # Reduced safety margin
+                return True, f"High memory pressure with insufficient memory (need {required_gb}GB, available {info['available_gb']:.1f}GB)"
+        elif pressure == "moderate":
+            # Only defer if both fragmentation is high AND memory is tight
+            if info["fragmentation_score"] > 70 and not ResourceMonitor.check_memory_available(model_name, safety_margin=1.5):
+                return True, f"Moderate memory pressure with fragmentation concerns (frag score: {info['fragmentation_score']:.1f})"
+        
+        return False, "Memory sufficient for loading"

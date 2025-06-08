@@ -1,0 +1,17 @@
+{
+    "mlx-community/DeepSeek-R1-0528-Qwen3-8B-8bit": {
+        "max_tokens": 8192,
+        "temp": 0.3,
+        "top_p": 0.95,
+        "top_k": 40,
+        "min_p": 0.05,
+        "chat_template": "generic",
+        "required_memory_gb": 8,
+        "memory_pressure_max_tokens": {
+            "normal": 8192,
+            "moderate": 2048,
+            "high": 1024,
+            "critical": 512
+        }
+    }
+}

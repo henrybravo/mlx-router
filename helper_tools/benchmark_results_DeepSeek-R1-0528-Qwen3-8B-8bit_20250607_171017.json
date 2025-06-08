@@ -1,0 +1,102 @@
+{
+  "temperature_tests": [
+    {
+      "temp": 0.1,
+      "diversity": 0.8141542002301496,
+      "coherence": 0.702778234423804,
+      "combined_score": 0.6873924735007402
+    },
+    {
+      "temp": 0.3,
+      "diversity": 0.8311708371949336,
+      "coherence": 0.9819277108433735,
+      "combined_score": 0.8445348940441464
+    },
+    {
+      "temp": 0.5,
+      "diversity": 0.8063655761024182,
+      "coherence": 0.972972972972973,
+      "combined_score": 0.8324510485904962
+    },
+    {
+      "temp": 0.7,
+      "diversity": 0.8273056057866184,
+      "coherence": 0.8246753246753247,
+      "combined_score": 0.7600046062229139
+    },
+    {
+      "temp": 0.9,
+      "diversity": 0.8452454461253474,
+      "coherence": 0.8065761037357209,
+      "combined_score": 0.7586587787525726
+    }
+  ],
+  "top_p_tests": [
+    {
+      "top_p": 0.8,
+      "unique_ratio": 0.7922077922077922
+    },
+    {
+      "top_p": 0.85,
+      "unique_ratio": 0.8611111111111112
+    },
+    {
+      "top_p": 0.9,
+      "unique_ratio": 0.8375
+    },
+    {
+      "top_p": 0.95,
+      "unique_ratio": 0.8648648648648649
+    },
+    {
+      "top_p": 0.99,
+      "unique_ratio": 0.7837837837837838
+    }
+  ],
+  "combined_tests": {
+    "creative": {
+      "config": {
+        "temp": 0.4,
+        "top_p": 0.99
+      },
+      "generation_time": 2.897336006164551,
+      "response_length": 122,
+      "response_preview": "where trees can talk and animals are sentient.\n\nIn the heart of an ancient, enchanted woodland, far ..."
+    },
+    "technical": {
+      "config": {
+        "temp": 0.1,
+        "top_p": 0.8999999999999999
+      },
+      "generation_time": 2.9162039756774902,
+      "response_length": 118,
+      "response_preview": ", including the partitioning process and the base case for recursion.\n\nQuicksort is a highly efficie..."
+    },
+    "balanced": {
+      "config": {
+        "temp": 0.3,
+        "top_p": 0.95
+      },
+      "generation_time": 2.8405349254608154,
+      "response_length": 102,
+      "response_preview": "sources for the environment.\n\nRenewable energy sources, such as solar, wind, hydro, and geothermal p..."
+    }
+  },
+  "optimal_params": {
+    "temp": 0.3,
+    "top_p": 0.95,
+    "top_k": 40,
+    "min_p": 0.05
+  },
+  "notes": [
+    "Benchmarked on 3 diverse prompts",
+    "Best balance achieved with temp=0.30, top_p=0.95",
+    "Total benchmark time: 40.37 seconds"
+  ],
+  "metadata": {
+    "start_time": "2025-06-07T17:09:36.636066",
+    "model_load_time": 1.9353837966918945,
+    "total_time": 40.369592,
+    "end_time": "2025-06-07T17:10:17.005664"
+  }
+}
