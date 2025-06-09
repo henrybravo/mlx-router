@@ -1,9 +1,6 @@
-# mlx-project
-Useful scripts to ease the use of mlx
+# MLX Router
 
-## MLX Model Router v2
-
-A powerful and efficient server for managing and serving multiple MLX models through a unified API interface. Now powered by **FastAPI** for modern, high-performance API handling with automatic OpenAPI documentation.
+A powerful and efficient server for dynamically **routing API requests to multiple MLX models**, powered by FastAPI. Beyond routing, it’s a **high-performance server**, leveraging GPU acceleration and robust features for local inference.
 
 ![mlx-router](images/mlx-router-help-menu.png)
 
