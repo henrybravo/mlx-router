@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.henrybravo.mlx-router</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/opt/mlx-router/venv/bin/python</string>
+        <string>/usr/local/opt/mlx-router/main.py</string>
+        <string>--config</string>
+        <string>/usr/local/etc/mlx-router/config.json</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/usr/local/opt/mlx-router</string>
+    <key>StandardOutPath</key>
+    <string>/usr/local/opt/mlx-router/logs/mlx_router.log</string>
+    <key>StandardErrorPath</key>
+    <string>/usr/local/opt/mlx-router/logs/mlx_router.error.log</string>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
