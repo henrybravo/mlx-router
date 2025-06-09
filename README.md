@@ -127,14 +127,13 @@ sudo launchctl list | grep mlx-router
 tail -f /usr/local/opt/mlx-router/logs/mlx_router.log
 ```
 
-**Enhanced Installation Features:**
+**Installation Features:**
 - ✅ **Automatic dependency checking**: Validates Python version and required files
 - ⚡ **uv support**: Uses `uv` for faster package installation if available, falls back to pip
 - 🔄 **Existing service handling**: Safely handles reinstallation over existing services
 - 🧪 **Installation verification**: Tests service startup and API availability
 - 🔧 **Self-healing dependencies**: Automatically detects and fixes missing Python packages
 - 🎯 **Application testing**: Verifies main.py imports work before service installation
-- 🎨 **Colored output**: Clear visual feedback during installation process
 
 **Configuration in Production Mode:**
 
@@ -148,17 +147,17 @@ The installation script automatically:
 **Modifying Production Configuration:**
 ```bash
 # Backup current config (recommended)
-sudo cp /usr/local/etc/mlx-router/config.json /usr/local/etc/mlx-router/config.json.backup
+cp /usr/local/etc/mlx-router/config.json /usr/local/etc/mlx-router/config.json.backup
 
 # Edit the production config file
-sudo nano /usr/local/etc/mlx-router/config.json
+nano /usr/local/etc/mlx-router/config.json
 
 # Restart service to apply changes
 sudo launchctl unload /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
 sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
 
 # Verify changes in logs
-sudo tail -f /usr/local/var/log/mlx-router.log
+tail -f /usr/local/opt/mlx-router/logs/mlx-router.log
 ```
 
 **Service Management:**
@@ -272,15 +271,6 @@ Example configuration structure:
   }
 }
 ```
-
-## What's New in v2.0
-
-- **FastAPI Integration** - Modern async API framework with automatic documentation
-- **Modular Architecture** - Clean separation into config/, core/, and api/ modules
-- **Enhanced Error Handling** - Comprehensive HTTP status codes and error responses
-- **Interactive Documentation** - Built-in Swagger UI and ReDoc interfaces
-- **Improved Performance** - Async request handling and optimized memory management
-- **Better Monitoring** - Enhanced health endpoints with detailed system metrics
 
 ## Logging
 
@@ -398,6 +388,15 @@ sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
 - **Invalid config format**: Validate JSON syntax with `python -m json.tool /usr/local/etc/mlx-router/config.json`
 - **Memory-related crashes**: MLX memory errors automatically trigger service restart (production mode)
 - **Frequent crashes**: Check error logs for patterns and ensure sufficient system memory for models
+
+## What's New in v2.0
+
+- **FastAPI Integration** - Modern async API framework with automatic documentation
+- **Modular Architecture** - Clean separation into config/, core/, and api/ modules
+- **Enhanced Error Handling** - Comprehensive HTTP status codes and error responses
+- **Interactive Documentation** - Built-in Swagger UI and ReDoc interfaces
+- **Improved Performance** - Async request handling and optimized memory management
+- **Better Monitoring** - Enhanced health endpoints with detailed system metrics
 
 ## Contributing
 
