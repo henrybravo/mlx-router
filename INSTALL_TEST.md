@@ -24,7 +24,7 @@ ls -la /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
 ```bash
 ls -la /usr/local/opt/mlx-router/
 ls -la /usr/local/etc/mlx-router/
-ls -la /usr/local/var/log/
+ls -la /usr/local/opt/mlx-router/logs/
 ```
 
 3. **Check service status:**
@@ -48,8 +48,8 @@ open http://localhost:8800/docs
 
 2. **Check log files:**
 ```bash
-sudo tail -f /usr/local/var/log/mlx-router.log
-sudo tail -f /usr/local/var/log/mlx-router.error.log
+tail -f /usr/local/opt/mlx-router/logs/mlx-router.log
+tail -f /usr/local/opt/mlx-router/logs/mlx-router.error.log
 ```
 
 3. **Test chat completion:**
@@ -90,8 +90,8 @@ sudo launchctl print system/com.henrybravo.mlx-router
 
 2. **View recent logs:**
 ```bash
-sudo tail -50 /usr/local/var/log/mlx-router.log
-sudo tail -50 /usr/local/var/log/mlx-router.error.log
+tail -50 /usr/local/opt/mlx-router/logs/mlx-router.log
+tail -50 /usr/local/opt/mlx-router/logs/mlx-router.error.log
 ```
 
 3. **Test Python environment:**
@@ -102,7 +102,7 @@ sudo /usr/local/opt/mlx-router/venv/bin/pip list | grep mlx
 
 4. **Manual service start (for debugging):**
 ```bash
-sudo /usr/local/opt/mlx-router/venv/bin/python /usr/local/opt/mlx-router/main.py --config /usr/local/etc/mlx-router/config.json
+/usr/local/opt/mlx-router/venv/bin/python /usr/local/opt/mlx-router/main.py --config /usr/local/etc/mlx-router/config.json
 ```
 
 ## Uninstallation
