@@ -66,21 +66,7 @@
                 "critical": 1024
             }
         },
-        "mlx-community/DeepSeek-R1-0528-Qwen3-8B-bf16": {
-            "max_tokens": 8192, 
-            "temp": 0.6, 
-            "top_p": 0.95, 
-            "top_k": 50, 
-            "min_p": 0.01,
-            "chat_template": "deepseek",
-            "required_memory_gb": 16,
-            "memory_pressure_max_tokens": {
-                "normal": 8192,
-                "moderate": 4096,
-                "high": 2048,
-                "critical": 1024
-            }
-        },
+
         "deepseek-ai/deepseek-coder-6.7b-instruct": {
             "max_tokens": 4096, 
             "temp": 0.2, 
