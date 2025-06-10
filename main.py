@@ -9,6 +9,7 @@ import argparse
 import pyfiglet
 import json
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 
 import mlx.core as mx
@@ -19,20 +20,46 @@ from mlx_router.core.resource_monitor import ResourceMonitor
 from mlx_router.config.model_config import ModelConfig
 from mlx_router.api.app import app, set_model_manager
 
-# Version information
-VERSION = "2.0.1"
-RELEASE_DATE = "20250607"
-AUTHOR = "Henry Bravo - info@henrybravo.nl"
+from mlx_router.__version__ import VERSION, RELEASE_DATE, AUTHOR
 
-# Setup structured logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        RotatingFileHandler('logs/mlx_router.log', maxBytes=10*1024*1024, backupCount=3)
-    ]
-)
+# Setup structured logging with separate handlers for stdout and stderr
+class InfoFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno < logging.WARNING
+
+class ErrorFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno >= logging.WARNING
+
+# Configure root logger
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+
+# Create formatters
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Create stdout handler for INFO and DEBUG messages
+stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler.setLevel(logging.DEBUG)
+stdout_handler.setFormatter(formatter)
+stdout_handler.addFilter(InfoFilter())
+
+# Create stderr handler for WARNING, ERROR, and CRITICAL messages
+stderr_handler = logging.StreamHandler(sys.stderr)
+stderr_handler.setLevel(logging.WARNING)
+stderr_handler.setFormatter(formatter)
+stderr_handler.addFilter(ErrorFilter())
+
+# Create file handler for all messages
+file_handler = RotatingFileHandler('logs/mlx_router.log', maxBytes=10*1024*1024, backupCount=3)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+# Add handlers to root logger
+root_logger.addHandler(stdout_handler)
+root_logger.addHandler(stderr_handler)
+root_logger.addHandler(file_handler)
+
 logger = logging.getLogger(__name__)
 
 def log_and_print(message, level="info"):
@@ -93,6 +120,9 @@ Examples:
 
   # Start server with config file and specific port
   python main.py --config config.json --port 8888
+  
+  # Start server with debug logging enabled
+  python main.py --debug
             """
     )
 
@@ -102,6 +132,7 @@ Examples:
     parser.add_argument("--max-tokens", type=int, default=4096, help="Max tokens (default: 4096)")
     parser.add_argument("--timeout", type=int, default=120, help="Generation timeout (default: 120s)")
     parser.add_argument("--config", help="Config file path (optional)")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     return parser.parse_args()
 
 def main():
@@ -110,8 +141,6 @@ def main():
     if args.version:
         print_banner()
         return
-    
-    logger.info(f"Starting MLX Router v{VERSION} (Release Date: {RELEASE_DATE}) by {AUTHOR} (https://github.com/henrybravo/mlx-router)")
 
     try:
         mx.set_default_device(mx.gpu)
@@ -126,11 +155,30 @@ def main():
             logger.info(f"Loaded configuration from {args.config}")
             ModelConfig.load_from_dict(config_data.get('models', {}))
             defaults = config_data.get('defaults', {})
+            server_config = config_data.get('server', {})
+            
+            # Apply config values only if CLI args weren't explicitly provided
             args.max_tokens = defaults.get('max_tokens', args.max_tokens)
             args.timeout = defaults.get('timeout', args.timeout)
+            
+            # For server config, use config file values as defaults unless overridden by CLI
+            if args.ip == "0.0.0.0":  # Default value, not explicitly set
+                args.ip = server_config.get('ip', args.ip)
+            if args.port == 8800:  # Default value, not explicitly set
+                args.port = server_config.get('port', args.port)
+            if not args.debug:  # Debug flag not set via CLI
+                args.debug = server_config.get('debug', args.debug)
         except Exception as e:
             log_and_print(f"Failed to load config file {args.config}: {e}", level="error")
             exit(1)
+    
+    # Set logging level based on debug flag (after config is loaded)
+    if args.debug:
+        root_logger.setLevel(logging.DEBUG)
+        stdout_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(logging.DEBUG)
+    
+    logger.info(f"Starting MLX Router v{VERSION} (Release Date: {RELEASE_DATE}) by {AUTHOR} (https://github.com/henrybravo/mlx-router)")
     
     model_manager = MLXModelManager(max_tokens=args.max_tokens, timeout=args.timeout)
     set_model_manager(model_manager)

@@ -16,9 +16,7 @@ from pydantic import BaseModel
 
 from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.resource_monitor import ResourceMonitor
-
-# Version information
-VERSION = "2.0.1"
+from mlx_router.__version__ import VERSION
 
 logger = logging.getLogger(__name__)
 
