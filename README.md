@@ -258,8 +258,15 @@ Example configuration structure:
 ```json
 {
   "defaults": {
-    "max_tokens": 4096,
-    "timeout": 120
+      "max_tokens": 4096,
+      "timeout": 120,
+      "cache_size": 2,
+      "memory_threshold_gb": 2.0
+  },
+  "server": {
+      "ip": "127.0.0.1",
+      "port": 8801,
+      "debug": false
   },
   "models": {
     "model-name": {
@@ -268,7 +275,10 @@ Example configuration structure:
       "chat_template": "llama3",
       "required_memory_gb": 8
     }
-  }
+  },
+  "default_model": "llama3",
+  "stream_chunk_size": 32,
+  "warmup_tokens": 5
 }
 ```
 
