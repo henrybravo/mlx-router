@@ -5,6 +5,7 @@ MLX Model Manager for handling model loading, generation, and message formatting
 
 import gc
 import logging
+import os
 import re
 import time
 import threading
@@ -19,6 +20,24 @@ from mlx_router.core.resource_monitor import ResourceMonitor
 
 logger = logging.getLogger(__name__)
 
+# Pre-compile regex patterns for better performance
+CLEANUP_PATTERNS = [
+    (re.compile(r'<\|start_header_id\|>.*?<\|end_header_id\|>', re.DOTALL), ''),
+    (re.compile(r'<\|eot_id\|>'), ''),
+    (re.compile(r'<\|begin_of_text\|>'), ''),
+    (re.compile(r'<\|end_of_text\|>'), ''),
+    (re.compile(r'<\|im_start\|>system\n.*?\n<\|im_end\|>', re.DOTALL), ''),
+    (re.compile(r'<\|im_start\|>user\n.*?\n<\|im_end\|>', re.DOTALL), ''),
+    (re.compile(r'<\|im_start\|>assistant\n'), ''),
+    (re.compile(r'<\|im_end\|>'), ''),
+    (re.compile(r'<\|user\|>'), ''),
+    (re.compile(r'<\|end\|>'), ''),
+    (re.compile(r'<\|assistant\|>'), ''),
+    (re.compile(r'^\s*<\|.*?\|>\s*\n?', re.MULTILINE), ''),
+    (re.compile(r'^(Assistant|User|System):\s*', re.MULTILINE), ''),
+]
+NEWLINE_PATTERN = re.compile(r'\n{3,}')
+
 class MLXModelManager:
     """Core logic for managing MLX models, with detailed logic"""
     def __init__(self, max_tokens=4096, timeout=120):
@@ -28,7 +47,10 @@ class MLXModelManager:
         self.default_max_tokens = max_tokens
         self.default_timeout = timeout
         self.model_lock = threading.Lock()
-        self.executor = ThreadPoolExecutor(max_workers=1)
+        self.request_count_lock = threading.Lock()  # New lock for thread-safe request counting
+        # Increase max_workers for better concurrency (CPU cores / 2, minimum 1)
+        max_workers = max(1, os.cpu_count() // 2) if os.cpu_count() else 1
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.start_time = time.time()
         self.request_count = 0
         self.available_models = self._validate_models()
@@ -36,11 +58,20 @@ class MLXModelManager:
         
     def refresh_available_models(self):
         """Refresh available models after configuration changes"""
-        self.available_models = self._validate_models()
-        logger.info(f"Refreshed model list: validated {len(self.available_models)} available models")
+        with self.model_lock:  # Thread-safe update of available_models
+            self.available_models = self._validate_models()
+            logger.info(f"Refreshed model list: validated {len(self.available_models)} available models")
 
     def increment_request_count(self):
-        self.request_count += 1
+        """Thread-safe increment of request count"""
+        with self.request_count_lock:
+            self.request_count += 1
+    
+    def shutdown(self):
+        """Properly shutdown the executor and clean up resources"""
+        if hasattr(self, 'executor'):
+            self.executor.shutdown(wait=True)
+            logger.info("MLXModelManager executor shut down")
 
     def get_health_metrics(self):
         mem_info = ResourceMonitor.get_memory_info()
@@ -289,24 +320,10 @@ class MLXModelManager:
         if not response_text:
             return ""
         
-        cleanup_patterns = [
-            (r'<\|start_header_id\|>.*?<\|end_header_id\|>', ''),
-            (r'<\|eot_id\|>', ''),
-            (r'<\|begin_of_text\|>', ''),
-            (r'<\|end_of_text\|>', ''),
-            (r'<\|im_start\|>system\n.*?\n<\|im_end\|>', ''),
-            (r'<\|im_start\|>user\n.*?\n<\|im_end\|>', ''),
-            (r'<\|im_start\|>assistant\n', ''),
-            (r'<\|im_end\|>', ''),
-            (r'<\|user\|>', ''), (r'<\|end\|>', ''),
-            (r'<\|assistant\|>', ''),
-            (r'^\s*<\|.*?\|>\s*\n?', ''),
-            (r'^(Assistant|User|System):\s*', ''),
-        ]
-        
+        # Use pre-compiled patterns for better performance
         cleaned = response_text
-        for pattern, replacement in cleanup_patterns:
-            cleaned = re.sub(pattern, replacement, cleaned, flags=re.DOTALL | re.MULTILINE)
+        for pattern, replacement in CLEANUP_PATTERNS:
+            cleaned = pattern.sub(replacement, cleaned)
         
         lines = cleaned.split('\n')
         processed_lines = []
@@ -318,7 +335,7 @@ class MLXModelManager:
                 processed_lines.append("")
         
         result = '\n'.join(processed_lines).strip()
-        result = re.sub(r'\n{3,}', '\n\n', result)
+        result = NEWLINE_PATTERN.sub('\n\n', result)
 
         if not result or len(result.strip()) < 1:
             logger.warning("Response was empty or very short after sanitization.")

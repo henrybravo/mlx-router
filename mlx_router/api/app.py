@@ -12,7 +12,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 
 from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.resource_monitor import ResourceMonitor
@@ -37,11 +37,22 @@ class ChatMessage(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: List[ChatMessage]
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    top_k: Optional[int] = None
-    max_tokens: Optional[int] = None
+    temperature: Optional[float] = Field(None, ge=0.01, le=2.0, description="Temperature must be between 0.01 and 2.0")
+    top_p: Optional[float] = Field(None, ge=0.01, le=1.0, description="top_p must be between 0.01 and 1.0")
+    top_k: Optional[int] = Field(None, ge=1, le=200, description="top_k must be between 1 and 200")
+    max_tokens: Optional[int] = Field(None, ge=1, le=32768, description="max_tokens must be between 1 and 32768")
     stream: Optional[bool] = False
+    
+    @validator('messages')
+    def validate_messages(cls, v):
+        if not v:
+            raise ValueError("messages cannot be empty")
+        for msg in v:
+            if not msg.role or not msg.content:
+                raise ValueError("each message must have both role and content")
+            if msg.role not in ['system', 'user', 'assistant']:
+                raise ValueError("message role must be 'system', 'user', or 'assistant'")
+        return v
 
 model_manager = None
 

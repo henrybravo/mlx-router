@@ -151,11 +151,28 @@ def main():
     config_data = {}
     if args.config:
         try:
-            with open(args.config, 'r') as f: config_data = json.load(f)
+            with open(args.config, 'r') as f: 
+                config_data = json.load(f)
             logger.info(f"Loaded configuration from {args.config}")
-            ModelConfig.load_from_dict(config_data.get('models', {}))
+            
+            # Validate config structure
+            if not isinstance(config_data, dict):
+                raise ValueError("Config file must contain a JSON object")
+            
+            # Validate models section if present
+            models_config = config_data.get('models', {})
+            if models_config and not isinstance(models_config, dict):
+                raise ValueError("'models' section must be a dictionary")
+            
+            ModelConfig.load_from_dict(models_config)
             defaults = config_data.get('defaults', {})
             server_config = config_data.get('server', {})
+            
+            # Validate defaults and server_config are dictionaries
+            if defaults and not isinstance(defaults, dict):
+                raise ValueError("'defaults' section must be a dictionary")
+            if server_config and not isinstance(server_config, dict):
+                raise ValueError("'server' section must be a dictionary")
             
             # Apply config values only if CLI args weren't explicitly provided
             args.max_tokens = defaults.get('max_tokens', args.max_tokens)
@@ -168,8 +185,18 @@ def main():
                 args.port = server_config.get('port', args.port)
             if not args.debug:  # Debug flag not set via CLI
                 args.debug = server_config.get('debug', args.debug)
+                
+        except FileNotFoundError:
+            log_and_print(f"Config file not found: {args.config}", level="error")
+            exit(1)
+        except json.JSONDecodeError as e:
+            log_and_print(f"Invalid JSON in config file {args.config}: {e}", level="error")
+            exit(1)
+        except ValueError as e:
+            log_and_print(f"Invalid config file structure: {e}", level="error")
+            exit(1)
         except Exception as e:
-            log_and_print(f"Failed to load config file {args.config}: {e}", level="error")
+            log_and_print(f"Unexpected error loading config file {args.config}: {e}", level="error")
             exit(1)
     
     # Set logging level based on debug flag (after config is loaded)
