@@ -181,6 +181,11 @@ def main():
     logger.info(f"Starting MLX Router v{VERSION} (Release Date: {RELEASE_DATE}) by {AUTHOR} (https://github.com/henrybravo/mlx-router)")
     
     model_manager = MLXModelManager(max_tokens=args.max_tokens, timeout=args.timeout)
+    
+    # Refresh available models after config is loaded to ensure we use config-based model definitions
+    if args.config and config_data.get('models'):
+        model_manager.refresh_available_models()
+    
     set_model_manager(model_manager)
     
     default_model_to_preload = config_data.get('default_model')

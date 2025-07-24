@@ -33,6 +33,11 @@ class MLXModelManager:
         self.request_count = 0
         self.available_models = self._validate_models()
         logger.info(f"Validated {len(self.available_models)} available models")
+        
+    def refresh_available_models(self):
+        """Refresh available models after configuration changes"""
+        self.available_models = self._validate_models()
+        logger.info(f"Refreshed model list: validated {len(self.available_models)} available models")
 
     def increment_request_count(self):
         self.request_count += 1

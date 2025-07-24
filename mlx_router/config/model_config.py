@@ -73,6 +73,9 @@ class ModelConfig:
     @classmethod
     def load_from_dict(cls, config_dict):
         """Load model configurations from a dictionary (typically from config.json)"""
-        if isinstance(config_dict, dict):
-            cls.MODELS.update(config_dict)
-            logger.info(f"Updated ModelConfig with {len(config_dict)} model configurations")
+        if isinstance(config_dict, dict) and config_dict:
+            # Replace the entire MODELS dictionary with the config file contents
+            cls.MODELS = config_dict.copy()
+            logger.info(f"Loaded ModelConfig with {len(config_dict)} model configurations from config file")
+        elif not config_dict:
+            logger.warning("Empty model configuration provided, keeping default models")
