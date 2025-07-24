@@ -77,5 +77,10 @@ class ModelConfig:
             # Replace the entire MODELS dictionary with the config file contents
             cls.MODELS = config_dict.copy()
             logger.info(f"Loaded ModelConfig with {len(config_dict)} model configurations from config file")
-        elif not config_dict:
-            logger.warning("Empty model configuration provided, keeping default models")
+        elif config_dict is not None and isinstance(config_dict, dict):
+            # Empty dict provided - clear models
+            cls.MODELS = {}
+            logger.warning("Empty model configuration provided, clearing models")
+        else:
+            # None or invalid config - keep current models
+            logger.warning("Invalid model configuration provided, keeping current models")

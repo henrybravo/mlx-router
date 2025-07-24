@@ -38,6 +38,51 @@ CLEANUP_PATTERNS = [
 ]
 NEWLINE_PATTERN = re.compile(r'\n{3,}')
 
+# Data-driven chat template configuration
+CHAT_TEMPLATES = {
+    'llama3': {
+        'prefix': '<|begin_of_text|>',
+        'role_start': '<|start_header_id|>{role}<|end_header_id|>\n\n',
+        'role_end': '<|eot_id|>',
+        'assistant_start': '<|start_header_id|>assistant<|end_header_id|>\n\n',
+        'system_default': None
+    },
+    'deepseek': {
+        'prefix': '',
+        'system_format': '{content}\n',
+        'user_format': '### Instruction:\n{content}\n',
+        'assistant_format': '### Response:\n{content}\n',
+        'assistant_start': '### Response:\n',
+        'system_default': 'You are an AI programming assistant, utilizing the DeepSeek Coder model, developed by DeepSeek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.\n'
+    },
+    'qwen': {
+        'prefix': '',
+        'role_format': '<|im_start|>{role}\n{content}<|im_end|>\n',
+        'assistant_start': '<|im_start|>assistant\n',
+        'system_default': None
+    },
+    'chatml': {
+        'prefix': '',
+        'role_format': '<|im_start|>{role}\n{content}<|im_end|>\n',
+        'assistant_start': '<|im_start|>assistant\n',
+        'system_default': None
+    },
+    'phi4': {
+        'prefix': '',
+        'user_format': '<|user|>\n{content}<|end|>\n',
+        'assistant_format': '<|assistant|>\n{content}<|end|>\n',
+        'system_format': '<|system|>\n{content}<|end|>\n',
+        'assistant_start': '<|assistant|>\n',
+        'system_default': None
+    },
+    'generic': {
+        'prefix': '',
+        'role_format': '<|im_start|>{role}\n{content}<|im_end|>\n',
+        'assistant_start': '<|im_start|>assistant\n',
+        'system_default': None
+    }
+}
+
 class MLXModelManager:
     """Core logic for managing MLX models, with detailed logic"""
     def __init__(self, max_tokens=4096, timeout=120):
@@ -97,10 +142,9 @@ class MLXModelManager:
         }
     
     def should_defer_model_load_for_health(self, model_name):
-        # A simplified check just for the health endpoint status
-        required_gb = ModelConfig.get_config(model_name).get("required_memory_gb", 8)
-        info = ResourceMonitor.get_memory_info()
-        return info["available_gb"] < required_gb * 1.2
+        # A simplified check just for the health endpoint status using consolidated method
+        can_load, _ = ResourceMonitor.check_memory_available(model_name, safety_margin=1.2)
+        return not can_load
 
     def _validate_models(self):
         """Validate which models are actually available with memory awareness"""
@@ -219,101 +263,48 @@ class MLXModelManager:
             return default
 
     def _format_messages(self, messages):
-        """Format messages with model-specific chat templates"""
+        """Format messages with model-specific chat templates using data-driven approach"""
         if not messages:
             return self._get_default_prompt()
         
         chat_template_name = ModelConfig.get_chat_template(self.current_model_name)
+        template = CHAT_TEMPLATES.get(chat_template_name, CHAT_TEMPLATES['generic'])
         
-        if chat_template_name == "llama3":
-            return self._format_llama3_messages(messages)
-        elif chat_template_name == "deepseek":
-            return self._format_deepseek_messages(messages)
-        elif chat_template_name == "qwen" or chat_template_name == "chatml":
-            return self._format_qwen_messages(messages)
-        elif chat_template_name == "phi4":
-            return self._format_phi4_messages(messages)
-        else:
-            return self._format_generic_messages(messages)
-    
-    def _format_llama3_messages(self, messages):
-        """Format messages using the official Llama 3 chat template"""
-        prompt = "<|begin_of_text|>"
+        # Start with prefix
+        prompt = template.get('prefix', '')
         
+        # Add system default if needed and no system message exists
+        has_system = any(self._get_msg_attr(msg, "role", "").lower() == "system" for msg in messages)
+        if not has_system and template.get('system_default'):
+            if template.get('system_format'):
+                prompt += template['system_format'].format(content=template['system_default'])
+            else:
+                prompt += template['system_default']
+        
+        # Process messages
         for msg in messages:
             role = self._get_msg_attr(msg, "role", "user").lower()
             content = self._get_msg_attr(msg, "content", "").strip()
             
             if not content and role != "system":
                 continue
-                
-            prompt += f"<|start_header_id|>{role}<|end_header_id|>\n\n{content}<|eot_id|>"
-        
-        prompt += "<|start_header_id|>assistant<|end_header_id|>\n\n"
-        return prompt
-    
-    def _format_deepseek_messages(self, messages):
-        """Format messages using the official DeepSeek chat template"""
-        prompt = ""
-        
-        has_system_prompt = any(self._get_msg_attr(msg, "role", "").lower() == "system" for msg in messages)
-        
-        if not has_system_prompt:
-            prompt += "You are an AI programming assistant, utilizing the DeepSeek Coder model, developed by DeepSeek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.\n"
-        
-        for msg in messages:
-            role = self._get_msg_attr(msg, "role", "user").lower()
-            content = self._get_msg_attr(msg, "content", "").strip()
             
-            if role == "system":
-                prompt += f"{content}\n"
-            elif role == "user":
-                prompt += f"### Instruction:\n{content}\n"
-            elif role == "assistant":
-                prompt += f"### Response:\n{content}\n"
+            # Use role-specific format or generic role format
+            role_format_key = f"{role}_format"
+            if role_format_key in template:
+                prompt += template[role_format_key].format(content=content)
+            elif 'role_format' in template:
+                prompt += template['role_format'].format(role=role, content=content)
+            elif chat_template_name == 'llama3':
+                # Special handling for llama3 format
+                prompt += template['role_start'].format(role=role) + content + template['role_end']
         
-        prompt += "### Response:\n"
+        # Add assistant start
+        prompt += template.get('assistant_start', '')
+        
         return prompt
     
-    def _format_qwen_messages(self, messages):
-        """Format messages using Qwen/ChatML template"""
-        prompt = ""
-        
-        for msg in messages:
-            role = self._get_msg_attr(msg, "role", "user")
-            content = self._get_msg_attr(msg, "content", "").strip()
-            prompt += f"<|im_start|>{role}\n{content}<|im_end|>\n"
-        
-        prompt += "<|im_start|>assistant\n"
-        return prompt
-    
-    def _format_phi4_messages(self, messages):
-        """Format messages using Phi-4 template"""
-        prompt = ""
-        
-        for msg in messages:
-            role = self._get_msg_attr(msg, "role", "user")
-            content = self._get_msg_attr(msg, "content", "").strip()
-            
-            if role == "user":
-                prompt += f"<|user|>\n{content}<|end|>\n"
-            elif role == "assistant":
-                prompt += f"<|assistant|>\n{content}<|end|>\n"
-            elif role == "system":
-                prompt += f"<|system|>\n{content}<|end|>\n"
-        
-        prompt += "<|assistant|>\n"
-        return prompt
-    
-    def _format_generic_messages(self, messages):
-        """Generic fallback message formatting"""
-        prompt = ""
-        for msg in messages:
-            role = self._get_msg_attr(msg, "role", "user")
-            content = self._get_msg_attr(msg, "content", "")
-            prompt += f"<|im_start|>{role}\n{content}<|im_end|>\n"
-        prompt += "<|im_start|>assistant\n"
-        return prompt
+    # Removed individual format functions - now using data-driven approach in _format_messages
 
     def _sanitize_response(self, response_text):
         """Sanitize model response for proper rendering, preserving meaningful newlines."""

@@ -6,9 +6,11 @@ Now powered by FastAPI for a robust, modern API.
 """
 
 import argparse
+import atexit
 import pyfiglet
 import json
 import logging
+import signal
 import sys
 from logging.handlers import RotatingFileHandler
 
@@ -62,22 +64,7 @@ root_logger.addHandler(file_handler)
 
 logger = logging.getLogger(__name__)
 
-def log_and_print(message, level="info"):
-    print(message)
-    if level == "info":
-        logger.info(message)
-    elif level == "warning":
-        logger.warning(message)
-    elif level == "error":
-        logger.error(message)
-    elif level == "debug":
-        logger.debug(message)
-    elif level == "critical":
-        logger.critical(message)
-    elif level == "fatal":
-        logger.fatal(message)
-    elif level == "trace":
-        logger.trace(message)
+# Removed log_and_print function - use logger directly for consistency
 
 def print_banner():
     """Print the MLX Router banner with ASCII art"""
@@ -146,7 +133,7 @@ def main():
         mx.set_default_device(mx.gpu)
         logger.info("MLX default device set to GPU.")
     except Exception as e:
-        log_and_print(f"Could not set MLX default device to GPU: {e}. MLX will use its default.", level="warning")
+        logger.warning(f"Could not set MLX default device to GPU: {e}. MLX will use its default.")
     
     config_data = {}
     if args.config:
@@ -187,16 +174,16 @@ def main():
                 args.debug = server_config.get('debug', args.debug)
                 
         except FileNotFoundError:
-            log_and_print(f"Config file not found: {args.config}", level="error")
+            logger.error(f"Config file not found: {args.config}")
             exit(1)
         except json.JSONDecodeError as e:
-            log_and_print(f"Invalid JSON in config file {args.config}: {e}", level="error")
+            logger.error(f"Invalid JSON in config file {args.config}: {e}")
             exit(1)
         except ValueError as e:
-            log_and_print(f"Invalid config file structure: {e}", level="error")
+            logger.error(f"Invalid config file structure: {e}")
             exit(1)
         except Exception as e:
-            log_and_print(f"Unexpected error loading config file {args.config}: {e}", level="error")
+            logger.error(f"Unexpected error loading config file {args.config}: {e}")
             exit(1)
     
     # Set logging level based on debug flag (after config is loaded)
@@ -208,6 +195,22 @@ def main():
     logger.info(f"Starting MLX Router v{VERSION} (Release Date: {RELEASE_DATE}) by {AUTHOR} (https://github.com/henrybravo/mlx-router)")
     
     model_manager = MLXModelManager(max_tokens=args.max_tokens, timeout=args.timeout)
+    
+    # Setup graceful shutdown handling
+    def shutdown_handler(signum=None, frame=None):
+        logger.info("Received shutdown signal, cleaning up...")
+        try:
+            model_manager.shutdown()
+            logger.info("MLX Router shutdown complete")
+        except Exception as e:
+            logger.error(f"Error during shutdown: {e}")
+        finally:
+            sys.exit(0)
+    
+    # Register shutdown handlers
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
+    atexit.register(shutdown_handler)
     
     # Refresh available models after config is loaded to ensure we use config-based model definitions
     if args.config and config_data.get('models'):
@@ -222,7 +225,7 @@ def main():
     if default_model_to_preload:
         logger.info(f"Attempting to preload default model: {default_model_to_preload}")
         try: model_manager.load_model(default_model_to_preload)
-        except (ValueError, RuntimeError) as e: log_and_print(f"Failed to preload default model: {e}", level="warning")
+        except (ValueError, RuntimeError) as e: logger.warning(f"Failed to preload default model: {e}")
     
     print_banner()
     mem_info = ResourceMonitor.get_memory_info()
@@ -234,7 +237,7 @@ def main():
         print("📋 Available models:")
         for model_id in model_manager.available_models: print(f"  - {model_id}")
     else:
-        log_and_print("⚠️ No models loaded or configured.", level="warning")
+        logger.warning("⚠️ No models loaded or configured.")
         
     uvicorn.run(app, host=args.ip, port=args.port)
 
