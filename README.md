@@ -39,7 +39,7 @@ You can use the helper tools in `helper_tools/` directory:
 
 ```mermaid
 graph TD
-    A[User] -->|HTTP Request| B(FastAPI Server)
+    A[User / Agent] -->|HTTP Request| B(FastAPI Server)
     B --> C[MLX Router]
     C --> D[Model 1]
     C --> E[Model 2]
@@ -398,6 +398,24 @@ sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
 - **Invalid config format**: Validate JSON syntax with `python -m json.tool /usr/local/etc/mlx-router/config.json`
 - **Memory-related crashes**: MLX memory errors automatically trigger service restart (production mode)
 - **Frequent crashes**: Check error logs for patterns and ensure sufficient system memory for models
+
+## Agent Framework Integration
+
+MLX Router's OpenAI-compatible API enables seamless integration with popular agent frameworks and AI applications:
+
+- 🔒 **Complete data privacy** - All processing happens locally
+- ⚡ **GPU acceleration** - Apple Silicon optimized inference  
+- 🔄 **Hot-swappable models** - Switch models without restarting agents
+- 🛠️ **Drop-in replacement** - Works with any OpenAI-compatible client
+
+For comprehensive setup guides and examples, see **[AGENTS.md](AGENTS.md)**
+
+**Supported Frameworks:**
+- **Microsoft Semantic Kernel** - Native OpenAI connector integration
+- **Strands** - Custom model provider with conversation memory  
+- **LangChain** - Chat model integration with chains and agents
+- **OpenWebUI** - Web interface for local LLM interactions
+- **Goose** - AI-powered developer assistant for terminal environments
 
 ## What's New in v2.0
 
