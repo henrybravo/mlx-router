@@ -1,0 +1,17 @@
+# Core Strands Agents SDK
+strands-agents>=1.1.0
+
+# Strands tools package
+strands-agents-tools>=0.2.2
+
+# HTTP client for custom model provider
+httpx>=0.27.0
+
+# Async support
+#asyncio-compat>=0.1.0
+
+# Type checking support
+typing-extensions>=4.5.0
+
+# Logging and debugging
+rich>=13.0.0
