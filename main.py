@@ -218,7 +218,16 @@ def main():
     
     set_model_manager(model_manager)
     
-    default_model_to_preload = config_data.get('default_model')
+    # Pass config to API layer for defaults
+    from mlx_router.api.app import set_global_config
+    set_global_config(config_data)
+    
+    # Get default model from config (check both old and new locations for compatibility)
+    default_model_to_preload = config_data.get('default_model')  # Legacy location
+    if not default_model_to_preload:
+        defaults = config_data.get('defaults', {})
+        default_model_to_preload = defaults.get('model')  # New location
+    
     if not default_model_to_preload and model_manager.available_models:
         default_model_to_preload = model_manager.available_models[0]
     

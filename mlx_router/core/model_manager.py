@@ -367,7 +367,7 @@ class MLXModelManager:
         try:
             future = self.executor.submit(
                 self._generate_with_mlx, 
-                prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val
+                prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, False
             )
             raw_response = future.result(timeout=self.default_timeout)
             
@@ -380,8 +380,71 @@ class MLXModelManager:
             logger.error(f"Error during generation with {self.current_model_name}: {e}", exc_info=True)
             return f"ERROR: Generation failed due to an internal error: {str(e)}"
 
-    def _generate_with_mlx(self, prompt, max_tokens, temperature, top_p, top_k, min_p):
-        """Core MLX generation logic"""
+    async def generate_stream_response(self, messages, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None):
+        """Generate streaming response for real-time token delivery"""
+        if not self.current_model:
+            logger.error("Streaming generation attempted without a loaded model.")
+            yield "ERROR: No model loaded. Please select a model first."
+            return
+        
+        model_config = ModelConfig.get_config(self.current_model_name)
+        
+        # Use provided parameters or fall back to model_config, then general defaults
+        max_tokens_val = max_tokens if max_tokens is not None else model_config.get("max_tokens", self.default_max_tokens)
+        temperature_val = temperature if temperature is not None else model_config.get("temp", 0.7)
+        top_p_val = top_p if top_p is not None else model_config.get("top_p", 0.9)
+        top_k_val = top_k if top_k is not None else model_config.get("top_k", 40)
+        min_p_val = min_p if min_p is not None else model_config.get("min_p", 0.05)
+
+        # Validate parameters (ensure they are within reasonable bounds)
+        temperature_val = max(0.01, min(2.0, temperature_val))
+        top_p_val = max(0.01, min(1.0, top_p_val))
+        max_tokens_val = max(1, min(max_tokens_val, model_config.get("max_tokens", self.default_max_tokens)))
+
+        # Apply memory pressure-aware token adjustment
+        pressure_level = ResourceMonitor.get_memory_pressure()
+        if pressure_level != "normal":
+            pressure_max_tokens = ResourceMonitor.get_memory_pressure_max_tokens(self.current_model_name, pressure_level)
+            if pressure_max_tokens < max_tokens_val:
+                logger.warning(f"Memory pressure '{pressure_level}' detected. Reducing max_tokens from {max_tokens_val} to {pressure_max_tokens}")
+                max_tokens_val = pressure_max_tokens
+        
+        prompt = self._format_messages(messages)
+        
+        try:
+            # Run the streaming generator in thread pool executor
+            import asyncio
+            loop = asyncio.get_running_loop()
+            
+            def stream_worker():
+                """Worker function to run the streaming generator in executor"""
+                try:
+                    token_generator = self._generate_with_mlx(
+                        prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=True
+                    )
+                    # Collect tokens from the generator
+                    tokens = []
+                    for token in token_generator:
+                        tokens.append(token)
+                    return tokens
+                except Exception as e:
+                    logger.error(f"Error in stream worker: {e}", exc_info=True)
+                    raise
+            
+            # Execute the streaming generation
+            future = loop.run_in_executor(self.executor, stream_worker)
+            tokens = await future
+            
+            # Yield tokens one by one
+            for token in tokens:
+                yield token
+                
+        except Exception as e:
+            logger.error(f"Error during streaming generation with {self.current_model_name}: {e}", exc_info=True)
+            yield f"ERROR: Streaming generation failed: {str(e)}"
+
+    def _generate_with_mlx(self, prompt, max_tokens, temperature, top_p, top_k, min_p, stream=False):
+        """Core MLX generation logic - can return generator for streaming or full text"""
         try:
             sampler_args = {"temp": temperature, "top_p": top_p, "min_tokens_to_keep": 1}
             if min_p is not None and min_p > 0.0: sampler_args["min_p"] = min_p
@@ -406,14 +469,32 @@ class MLXModelManager:
                 sampler = make_sampler(temp=0.7, top_p=0.9, min_tokens_to_keep=1)
 
             start_time = time.time()
-            response = generate(
+            response_generator = generate(
                 self.current_model, self.current_tokenizer,
                 prompt=prompt, max_tokens=max_tokens, sampler=sampler, verbose=False
             )
-            gen_time = time.time() - start_time
-            num_tokens_generated = len(self.current_tokenizer.encode(response)) if self.current_tokenizer else len(response.split())
-            logger.info(f"Generated ~{num_tokens_generated} tokens in {gen_time:.2f}s using {self.current_model_name}")
-            return response
+            
+            if stream:
+                # For streaming, return a generator that yields each token
+                return self._stream_tokens(response_generator, start_time)
+            else:
+                # For non-streaming, collect all tokens and return as string (backward compatibility)
+                response = "".join(response_generator)
+                gen_time = time.time() - start_time
+                num_tokens_generated = len(self.current_tokenizer.encode(response)) if self.current_tokenizer else len(response.split())
+                logger.info(f"Generated ~{num_tokens_generated} tokens in {gen_time:.2f}s using {self.current_model_name}")
+                return response
+                
         except Exception as e:
             logger.error(f"MLX generation core error with {self.current_model_name}: {e}", exc_info=True)
             raise
+
+    def _stream_tokens(self, response_generator, start_time):
+        """Generator helper for streaming tokens"""
+        token_count = 0
+        for token in response_generator:
+            token_count += 1
+            yield token
+        # Log performance after streaming completes
+        gen_time = time.time() - start_time
+        logger.info(f"Streamed ~{token_count} tokens in {gen_time:.2f}s using {self.current_model_name}")

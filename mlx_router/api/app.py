@@ -5,12 +5,13 @@ FastAPI application and endpoints for MLX Router
 
 import asyncio
 import hashlib
+import json
 import logging
 import time
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 
@@ -19,6 +20,9 @@ from mlx_router.core.resource_monitor import ResourceMonitor
 from mlx_router.__version__ import VERSION
 
 logger = logging.getLogger(__name__)
+
+# Global config store for defaults
+_global_config = {}
 
 app = FastAPI(title="MLX Model Router", version=VERSION)
 app.add_middleware(
@@ -40,8 +44,8 @@ class ChatCompletionRequest(BaseModel):
     temperature: Optional[float] = Field(None, ge=0.01, le=2.0, description="Temperature must be between 0.01 and 2.0")
     top_p: Optional[float] = Field(None, ge=0.01, le=1.0, description="top_p must be between 0.01 and 1.0")
     top_k: Optional[int] = Field(None, ge=1, le=200, description="top_k must be between 1 and 200")
-    max_tokens: Optional[int] = Field(None, ge=1, le=32768, description="max_tokens must be between 1 and 32768")
-    stream: Optional[bool] = False
+    max_tokens: Optional[int] = Field(None, ge=1, le=131072, description="max_tokens must be between 1 and 131072")
+    stream: Optional[bool] = None  # Will use config default if None
     
     @validator('messages')
     def validate_messages(cls, v):
@@ -105,8 +109,111 @@ async def create_chat_completion(request: ChatCompletionRequest):
 
     model_manager.increment_request_count()
 
-    if request.stream:
-        raise HTTPException(status_code=501, detail="Streaming not yet implemented in 2.0.0")
+    # Determine streaming mode: 
+    # - If client explicitly sets stream=true/false, use that
+    # - If client doesn't specify stream (None), use config default
+    if request.stream is not None:
+        stream_mode = request.stream
+    else:
+        # Use config default when stream is not specified
+        defaults = _global_config.get('defaults', {})
+        stream_mode = defaults.get('stream', False)
+    
+    logger.debug(f"ReqID-{request_id}: Stream mode: {stream_mode} (request={request.stream}, config_default={_global_config.get('defaults', {}).get('stream', False)})")
+
+    if stream_mode:
+        # Handle streaming request
+        async def stream_generator():
+            """Generate Server-Sent Events for streaming response"""
+            try:
+                # Initial chunk with role
+                first_chunk = {
+                    "id": f"chatcmpl-{request_id}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": request.model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"role": "assistant"},
+                        "finish_reason": None
+                    }]
+                }
+                yield f"data: {json.dumps(first_chunk)}\n\n"
+                
+                # Stream tokens from model manager
+                async for token in model_manager.generate_stream_response(
+                    request.messages,
+                    request.max_tokens,
+                    request.temperature,
+                    request.top_p,
+                    request.top_k,
+                    getattr(request, 'min_p', None)
+                ):
+                    if token.startswith("ERROR:"):
+                        # Handle error in stream
+                        error_chunk = {
+                            "id": f"chatcmpl-{request_id}",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": request.model,
+                            "choices": [{
+                                "index": 0,
+                                "delta": {"content": f"\n\n{token}"},
+                                "finish_reason": "stop"
+                            }]
+                        }
+                        yield f"data: {json.dumps(error_chunk)}\n\n"
+                        break
+                    else:
+                        # Normal token chunk
+                        chunk = {
+                            "id": f"chatcmpl-{request_id}",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": request.model,
+                            "choices": [{
+                                "index": 0,
+                                "delta": {"content": token},
+                                "finish_reason": None
+                            }]
+                        }
+                        yield f"data: {json.dumps(chunk)}\n\n"
+                
+                # Final chunk
+                final_chunk = {
+                    "id": f"chatcmpl-{request_id}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": request.model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": "stop"
+                    }]
+                }
+                yield f"data: {json.dumps(final_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+                
+                logger.info(f"ReqID-{request_id}: Successfully completed streaming request.")
+                
+            except Exception as e:
+                logger.error(f"ReqID-{request_id}: Streaming error: {e}", exc_info=True)
+                # Send error in stream format
+                error_chunk = {
+                    "id": f"chatcmpl-{request_id}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": request.model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"content": f"\n\nERROR: {str(e)}"},
+                        "finish_reason": "stop"
+                    }]
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+        
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
     try:
         content = await asyncio.to_thread(
@@ -141,3 +248,8 @@ def set_model_manager(manager):
     """Set the global model manager instance"""
     global model_manager
     model_manager = manager
+
+def set_global_config(config_data):
+    """Set the global configuration data"""
+    global _global_config
+    _global_config = config_data

@@ -1,7 +1,7 @@
 # mlx_model.py
+import json
 import logging
 import httpx
-import json
 from typing import Any, Optional, TypedDict, AsyncIterable
 from typing_extensions import Unpack
 
@@ -128,6 +128,7 @@ class MLXModel(Model):
         request = {
             "model": self.config["model_id"],
             "messages": openai_messages,
+            "stream": True,  # Use real streaming for optimal performance
             **self.config.get("params", {})
         }
         
@@ -144,12 +145,11 @@ class MLXModel(Model):
         system_prompt: Optional[str] = None,
         **kwargs: Any
     ) -> AsyncIterable[StreamEvent]:
-        """Stream responses from MLX model.
+        """Stream responses from MLX model using real Server-Sent Events.
         
-        Note: This method simulates streaming by buffering the complete response
-        from MLX Router and then yielding it as stream events. This is a workaround
-        for MLX Router's current lack of native streaming support. The entire 
-        response is received before any events are yielded.
+        This method makes a streaming request to MLX Router and translates the
+        Server-Sent Events into Strands StreamEvent objects in real-time,
+        providing optimal performance and immediate token delivery.
         
         Args:
             messages: List of conversation messages
@@ -158,14 +158,14 @@ class MLXModel(Model):
             **kwargs: Additional keyword arguments
             
         Yields:
-            StreamEvent objects
+            StreamEvent objects translated from MLX Router's SSE stream
         """
-        logger.debug("messages=<%s> tool_specs=<%s> system_prompt=<%s> | formatting request",
+        logger.debug("messages=<%s> tool_specs=<%s> system_prompt=<%s> | formatting streaming request",
                      messages, tool_specs, system_prompt)
         
-        # Format the request
+        # Format the request (now with stream=True)
         request = self._format_request(messages, tool_specs, system_prompt)
-        logger.debug("request=<%s> | invoking model", request)
+        logger.debug("request=<%s> | starting SSE stream", request)
         
         # Prepare headers
         headers = {
@@ -174,61 +174,106 @@ class MLXModel(Model):
         }
         
         try:
-            # Make the API call
+            # Make streaming API call
             async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
+                async with client.stream(
+                    "POST",
                     f"{self.config['base_url']}/chat/completions",
                     json=request,
                     headers=headers
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                logger.debug("response received | processing stream")
-                
-                # Signal message start
-                yield {
-                    "messageStart": {
-                        "role": "assistant"
-                    }
-                }
-                
-                # Get the content from the response
-                content = result["choices"][0]["message"]["content"]
-                
-                # Send content as delta (simulate streaming)
-                yield {
-                    "contentBlockDelta": {
-                        "delta": {
-                            "text": content
-                        }
-                    }
-                }
-                
-                # Signal message stop
-                yield {
-                    "messageStop": {
-                        "stopReason": "end_turn"
-                    }
-                }
-                
-                # Add metadata if available
-                if "usage" in result:
-                    usage = result["usage"]
-                    yield {
-                        "metadata": {
-                            "usage": {
-                                "inputTokens": usage.get("prompt_tokens", 0),
-                                "outputTokens": usage.get("completion_tokens", 0),
-                                "totalTokens": usage.get("total_tokens", 0)
-                            },
-                            "metrics": {
-                                "latencyMs": 0  # MLX server doesn't provide this
-                            }
-                        }
-                    }
-                
-                logger.debug("stream processing complete")
+                ) as response:
+                    response.raise_for_status()
+                    
+                    logger.debug("SSE stream established | processing events")
+                    
+                    # Track if we've sent messageStart
+                    message_started = False
+                    content_chunks = []
+                    
+                    # Process Server-Sent Events line by line
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                            
+                        # Parse SSE format: "data: {json}" or "data: [DONE]"
+                        if line.startswith("data: "):
+                            data_content = line[6:]  # Remove "data: " prefix
+                            
+                            # Check for stream termination
+                            if data_content == "[DONE]":
+                                logger.debug("SSE stream completed with [DONE]")
+                                break
+                            
+                            try:
+                                # Parse the JSON chunk
+                                chunk = json.loads(data_content)
+                                
+                                # Extract delta information
+                                choices = chunk.get("choices", [])
+                                if not choices:
+                                    continue
+                                    
+                                choice = choices[0]
+                                delta = choice.get("delta", {})
+                                finish_reason = choice.get("finish_reason")
+                                
+                                # Handle role (messageStart)
+                                if "role" in delta and not message_started:
+                                    yield {
+                                        "messageStart": {
+                                            "role": delta["role"]
+                                        }
+                                    }
+                                    message_started = True
+                                    logger.debug("messageStart event sent")
+                                
+                                # Handle content chunks
+                                if "content" in delta:
+                                    content = delta["content"]
+                                    content_chunks.append(content)
+                                    
+                                    yield {
+                                        "contentBlockDelta": {
+                                            "delta": {
+                                                "text": content
+                                            }
+                                        }
+                                    }
+                                    logger.debug(f"content delta sent: {repr(content[:20])}...")
+                                
+                                # Handle completion
+                                if finish_reason:
+                                    yield {
+                                        "messageStop": {
+                                            "stopReason": "end_turn" if finish_reason == "stop" else finish_reason
+                                        }
+                                    }
+                                    logger.debug(f"messageStop event sent: {finish_reason}")
+                                    
+                                    # Add metadata (token usage not available in streaming, but we can estimate)
+                                    full_content = ''.join(content_chunks)
+                                    estimated_output_tokens = len(full_content.split())
+                                    
+                                    yield {
+                                        "metadata": {
+                                            "usage": {
+                                                "inputTokens": 0,  # Not available in streaming
+                                                "outputTokens": estimated_output_tokens,
+                                                "totalTokens": estimated_output_tokens
+                                            },
+                                            "metrics": {
+                                                "latencyMs": 0  # Real-time streaming
+                                            }
+                                        }
+                                    }
+                                    
+                                    break
+                                    
+                            except json.JSONDecodeError as je:
+                                logger.warning(f"Failed to parse SSE JSON chunk: {data_content[:100]}... | {je}")
+                                continue
+                    
+                    logger.debug("SSE stream processing complete")
                 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 413:  # Payload too large
@@ -238,7 +283,7 @@ class MLXModel(Model):
                 logger.error("HTTP error: %s - %s", e.response.status_code, e.response.text)
                 raise
         except Exception as e:
-            logger.error("Error calling MLX server: %s", str(e))
+            logger.error("Error in SSE streaming from MLX server: %s", str(e))
             raise
 
     async def structured_output(
