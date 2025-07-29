@@ -4,12 +4,22 @@ MLX Model Manager for handling model loading, generation, and message formatting
 """
 
 import gc
+import hashlib
+import json
 import logging
 import os
 import re
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from typing import Optional, List, Dict, Any
+
+try:
+    from jsonschema import validate, ValidationError
+except ImportError:
+    logger.warning("jsonschema not installed. Tool validation will be limited.")
+    def validate(instance, schema): pass
+    class ValidationError(Exception): pass
 
 import mlx.core as mx
 from mlx_lm import load, generate
@@ -45,7 +55,26 @@ CHAT_TEMPLATES = {
         'role_start': '<|start_header_id|>{role}<|end_header_id|>\n\n',
         'role_end': '<|eot_id|>',
         'assistant_start': '<|start_header_id|>assistant<|end_header_id|>\n\n',
-        'system_default': None
+        'system_default': None,
+        'tools_system_prompt': '''You have access to the following tools. To use a tool, respond with a JSON object in <tool_call> tags.
+
+<tools>
+{tools_json}
+</tools>
+
+Example response:
+<tool_call>
+[
+  {{
+    "name": "get_weather", 
+    "arguments": {{
+      "location": "San Francisco, CA"
+    }}
+  }}
+]
+</tool_call>
+
+If you need to use a tool, respond ONLY with the tool_call. If no tool is needed, respond normally.'''
     },
     'deepseek': {
         'prefix': '',
@@ -59,7 +88,26 @@ CHAT_TEMPLATES = {
         'prefix': '',
         'role_format': '<|im_start|>{role}\n{content}<|im_end|>\n',
         'assistant_start': '<|im_start|>assistant\n',
-        'system_default': None
+        'system_default': None,
+        'tools_system_prompt': '''You have access to the following tools. To use a tool, respond with a JSON object in <tool_call> tags.
+
+<tools>
+{tools_json}
+</tools>
+
+Example response:
+<tool_call>
+[
+  {{
+    "name": "get_weather", 
+    "arguments": {{
+      "location": "San Francisco, CA"
+    }}
+  }}
+]
+</tool_call>
+
+If you need to use a tool, respond ONLY with the tool_call. If no tool is needed, respond normally.'''
     },
     'chatml': {
         'prefix': '',
@@ -262,7 +310,7 @@ class MLXModelManager:
         else:
             return default
 
-    def _format_messages(self, messages):
+    def _format_messages(self, messages, tools=None):
         """Format messages with model-specific chat templates using data-driven approach"""
         if not messages:
             return self._get_default_prompt()
@@ -273,13 +321,30 @@ class MLXModelManager:
         # Start with prefix
         prompt = template.get('prefix', '')
         
+        # Handle tools injection into system message
+        tools_prompt = ""
+        if tools and template.get('tools_system_prompt'):
+            tools_json = json.dumps(tools, indent=2)
+            tools_prompt = template['tools_system_prompt'].format(tools_json=tools_json)
+        
         # Add system default if needed and no system message exists
         has_system = any(self._get_msg_attr(msg, "role", "").lower() == "system" for msg in messages)
-        if not has_system and template.get('system_default'):
-            if template.get('system_format'):
-                prompt += template['system_format'].format(content=template['system_default'])
-            else:
-                prompt += template['system_default']
+        if not has_system:
+            system_content = ""
+            if template.get('system_default'):
+                system_content = template['system_default']
+            if tools_prompt:
+                system_content = tools_prompt if not system_content else f"{system_content}\n\n{tools_prompt}"
+            
+            if system_content:
+                if template.get('system_format'):
+                    prompt += template['system_format'].format(content=system_content)
+                elif 'role_format' in template:
+                    prompt += template['role_format'].format(role='system', content=system_content)
+                elif chat_template_name == 'llama3':
+                    prompt += template['role_start'].format(role='system') + system_content + template['role_end']
+                else:
+                    prompt += system_content
         
         # Process messages
         for msg in messages:
@@ -288,6 +353,10 @@ class MLXModelManager:
             
             if not content and role != "system":
                 continue
+            
+            # If this is a system message and we have tools, inject tools prompt
+            if role == "system" and tools_prompt:
+                content = f"{content}\n\n{tools_prompt}" if content else tools_prompt
             
             # Use role-specific format or generic role format
             role_format_key = f"{role}_format"
@@ -334,11 +403,77 @@ class MLXModelManager:
         
         return result
 
-    def generate_response(self, messages, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None):
-        """Generate response with timeout protection"""
+    def _parse_tool_calls(self, text: str, tools: List[dict]) -> Optional[Dict[str, Any]]:
+        """Parse model output for tool calls and validate against tool schemas."""
+        
+        # Extract tool call content
+        match = re.search(r"<tool_call>(.*?)</tool_call>", text, re.DOTALL)
+        if not match:
+            return None
+            
+        tool_call_str = match.group(1).strip()
+        
+        try:
+            # Parse JSON - handle both single object and array
+            parsed = json.loads(tool_call_str)
+            if isinstance(parsed, dict):
+                parsed = [parsed]
+                
+            # Validate each tool call against available tools
+            validated_calls = []
+            for call in parsed:
+                tool_name = call.get('name')
+                tool_args = call.get('arguments', {})
+                
+                # Find tool definition
+                tool_def = next((t for t in tools if t.get('function', {}).get('name') == tool_name), None)
+                if not tool_def:
+                    logger.warning(f"Unknown tool called: {tool_name}")
+                    continue
+                    
+                # Validate arguments against schema if jsonschema is available
+                try:
+                    if 'parameters' in tool_def.get('function', {}):
+                        validate(instance=tool_args, schema=tool_def['function']['parameters'])
+                    
+                    validated_calls.append({
+                        'id': f"call_{hashlib.md5(f'{time.time()}{tool_name}'.encode()).hexdigest()[:8]}",
+                        'type': 'function',
+                        'function': {
+                            'name': tool_name,
+                            'arguments': json.dumps(tool_args)
+                        }
+                    })
+                except ValidationError as e:
+                    logger.warning(f"Invalid arguments for {tool_name}: {e}")
+                    continue
+                except Exception as e:
+                    logger.warning(f"Tool validation error for {tool_name}: {e}")
+                    # Still include the tool call even if validation fails
+                    validated_calls.append({
+                        'id': f"call_{hashlib.md5(f'{time.time()}{tool_name}'.encode()).hexdigest()[:8]}",
+                        'type': 'function',
+                        'function': {
+                            'name': tool_name,
+                            'arguments': json.dumps(tool_args)
+                        }
+                    })
+                    
+            return {'tool_calls': validated_calls} if validated_calls else None
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse tool call JSON: {e}")
+            return None
+
+    def generate_response(self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None):
+        """Generate response with timeout protection and optional tool support"""
         if not self.current_model:
             logger.error("Generation attempted without a loaded model.")
-            return "ERROR: No model loaded. Please select a model first."
+            return {
+                'type': 'error',
+                'content': "ERROR: No model loaded. Please select a model first.",
+                'finish_reason': 'error'
+            }
         
         model_config = ModelConfig.get_config(self.current_model_name)
         
@@ -362,7 +497,8 @@ class MLXModelManager:
                 logger.warning(f"Memory pressure '{pressure_level}' detected. Reducing max_tokens from {max_tokens_val} to {pressure_max_tokens}")
                 max_tokens_val = pressure_max_tokens
         
-        prompt = self._format_messages(messages)
+        # Format prompt with tools if provided
+        prompt = self._format_messages(messages, tools)
         
         try:
             future = self.executor.submit(
@@ -371,16 +507,40 @@ class MLXModelManager:
             )
             raw_response = future.result(timeout=self.default_timeout)
             
-            return self._sanitize_response(raw_response)
+            # Check for tool calls if tools were provided
+            if tools:
+                tool_calls = self._parse_tool_calls(raw_response, tools)
+                if tool_calls:
+                    return {
+                        'type': 'tool_calls',
+                        'content': None,
+                        'tool_calls': tool_calls['tool_calls'],
+                        'finish_reason': 'tool_calls'
+                    }
+            
+            # Standard text response
+            return {
+                'type': 'text', 
+                'content': self._sanitize_response(raw_response),
+                'finish_reason': 'stop'
+            }
             
         except FutureTimeoutError:
             logger.error(f"Generation timeout after {self.default_timeout}s for model {self.current_model_name}")
-            return "ERROR: Generation timed out. Try a shorter prompt or reduce max_tokens."
+            return {
+                'type': 'error',
+                'content': "ERROR: Generation timed out. Try a shorter prompt or reduce max_tokens.",
+                'finish_reason': 'timeout'
+            }
         except Exception as e:
             logger.error(f"Error during generation with {self.current_model_name}: {e}", exc_info=True)
-            return f"ERROR: Generation failed due to an internal error: {str(e)}"
+            return {
+                'type': 'error',
+                'content': f"ERROR: Generation failed due to an internal error: {str(e)}",
+                'finish_reason': 'error'
+            }
 
-    async def generate_stream_response(self, messages, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None):
+    async def generate_stream_response(self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None):
         """Generate streaming response for real-time token delivery"""
         if not self.current_model:
             logger.error("Streaming generation attempted without a loaded model.")
@@ -409,7 +569,7 @@ class MLXModelManager:
                 logger.warning(f"Memory pressure '{pressure_level}' detected. Reducing max_tokens from {max_tokens_val} to {pressure_max_tokens}")
                 max_tokens_val = pressure_max_tokens
         
-        prompt = self._format_messages(messages)
+        prompt = self._format_messages(messages, tools)
         
         try:
             # Run the streaming generator in thread pool executor

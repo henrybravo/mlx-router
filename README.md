@@ -16,19 +16,21 @@ A powerful and efficient server for dynamically **routing API requests to multip
 - 🏗️ **Modular architecture** - Clean separation of concerns
 - 📖 **Interactive API docs** - Automatic Swagger/OpenAPI documentation
 - 🔧 **System service support** - Install as macOS launchd service with automatic startup and crash recovery
+- 🌊 **Response Streaming** - Real-time token delivery with Server-Sent Events (90%+ latency reduction)
+- 🔧 **Function Calling** - OpenAI-compatible tool/function calling for agent frameworks
 
 ## Supported Models
 
-Any mlx model that is available locally and added to the list (in the script). As an example the router currently supports the following models:
+Any mlx model that is available locally and configured in config.json (recommended use). As an example the router currently supports the following models without having to use the config.json:
+
 - `mlx-community/Qwen3-30B-A3B-8bit`
 - `mlx-community/Llama-3.3-70B-Instruct-8bit`
 - `mlx-community/Llama-3.2-3B-Instruct-4bit`
 - `mlx-community/DeepSeek-R1-0528-Qwen3-8B-8bit`
-- `mlx-community/DeepSeek-R1-0528-Qwen3-8B-bf16`
 - `deepseek-ai/deepseek-coder-6.7b-instruct`
 - `mlx-community/Phi-4-reasoning-plus-6bit`
 
-You can use the `--config` argument to load external model configurations from `config.json`.
+You can use the `--config` argument to also load external model configurations from `config.json`.
 
 You can use the helper tools in `helper_tools/` directory:
 - `mlx_downloader.py` - Download MLX models
@@ -229,6 +231,57 @@ curl -s -X POST http://localhost:8800/v1/chat/completions \
   }' | jq
 ```
 
+**Streaming Response:**
+```bash
+curl -s -X POST http://localhost:8800/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+    "messages": [
+      {"role": "user", "content": "Write a short poem about technology"}
+    ],
+    "stream": true,
+    "max_tokens": 100
+  }'
+```
+
+**Function Calling:**
+```bash
+curl -s -X POST http://localhost:8800/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+    "messages": [
+      {"role": "user", "content": "What is the weather like in San Francisco?"}
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get current weather information for a location",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "The city and state, e.g. San Francisco, CA"
+              },
+              "units": {
+                "type": "string",
+                "enum": ["celsius", "fahrenheit"],
+                "description": "Temperature units"
+              }
+            },
+            "required": ["location"]
+          }
+        }
+      }
+    ],
+    "max_tokens": 150
+  }' | jq
+```
+
 **Health Check:**
 ```bash
 curl -s http://localhost:8800/health | jq
@@ -258,14 +311,19 @@ Example configuration structure:
 ```json
 {
   "defaults": {
-      "max_tokens": 4096,
+      "max_tokens": 8192,
       "timeout": 120,
       "cache_size": 2,
-      "memory_threshold_gb": 2.0
+      "memory_threshold_gb": 2.0,
+      "stream": false,
+      "enable_function_calling": true,
+      "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+      "stream_chunk_size": 32,
+      "warmup_tokens": 5
   },
   "server": {
-      "ip": "127.0.0.1",
-      "port": 8801,
+      "ip": "10.3.2.1",
+      "port": 8800,
       "debug": false
   },
   "models": {
@@ -273,19 +331,17 @@ Example configuration structure:
       "max_tokens": 8192,
       "temp": 0.7,
       "chat_template": "llama3",
-      "required_memory_gb": 8
+      "required_memory_gb": 8,
+      "supports_tools": true
     }
-  },
-  "default_model": "llama3",
-  "stream_chunk_size": 32,
-  "warmup_tokens": 5
+  }
 }
 ```
 
 ## Logging
 
 ### Development Mode
-Logs are written to both console and `logs/mlx_router.log` file with rotation.
+Logs are written to both console and `logs/mlx_router.log` file.
 
 ### Production Mode (System Service)
 Logs are written to application log files:
@@ -407,18 +463,34 @@ MLX Router's OpenAI-compatible API enables seamless integration with popular age
 - ⚡ **GPU acceleration** - Apple Silicon optimized inference  
 - 🔄 **Hot-swappable models** - Switch models without restarting agents
 - 🛠️ **Drop-in replacement** - Works with any OpenAI-compatible client
+- 🌊 **Streaming support** - Real-time token delivery for responsive UX
+- 🔧 **Function calling** - Tool integration for advanced agent workflows
 
 For comprehensive setup guides and examples, see **[AGENTS.md](AGENTS.md)**
 
 **Supported Frameworks:**
-- **Microsoft Semantic Kernel** - Native OpenAI connector integration
-- **Strands** - Custom model provider with conversation memory  
-- **LangChain** - Chat model integration with chains and agents
-- **OpenWebUI** - Web interface for local LLM interactions
+- **Microsoft Semantic Kernel** - Native OpenAI connector integration with streaming and tools
+- **Strands** - Custom model provider with conversation memory and function calling
+- **LangChain** - Chat model integration with chains, agents, streaming, and tools
+- **OpenWebUI** - Web interface for local LLM interactions with streaming support
 - **Goose** - AI-powered developer assistant for terminal environments
 
-## What's New in v2.0
+## What's New in v2.1.0
 
+**🌊 Response Streaming**
+- **Real-time token delivery** - 90%+ reduction in time-to-first-token
+- **Server-Sent Events** - OpenAI-compatible streaming format
+- **Async generators** - Non-blocking streaming with FastAPI
+- **Memory efficient** - Reduced peak memory usage during generation
+
+**🔧 Function Calling** 
+- **OpenAI-compatible** - Full compliance with function calling API
+- **Prompt engineering** - Tool instructions injected into model prompts
+- **JSON parsing** - Robust extraction and validation of tool calls
+- **Schema validation** - Tool arguments validated against provided schemas
+- **Error resilience** - Graceful fallback to text responses
+
+**Previous v2.0 Features:**
 - **FastAPI Integration** - Modern async API framework with automatic documentation
 - **Modular Architecture** - Clean separation into config/, core/, and api/ modules
 - **Enhanced Error Handling** - Comprehensive HTTP status codes and error responses

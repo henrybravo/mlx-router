@@ -26,10 +26,6 @@ class ModelConfig:
             "max_tokens": 8192, "temp": 0.6, "top_p": 0.9, "top_k": 40, "min_p": 0.05,
             "chat_template": "deepseek", "required_memory_gb": 8
         },
-        "mlx-community/DeepSeek-R1-0528-Qwen3-8B-bf16": {
-            "max_tokens": 8192, "temp": 0.6, "top_p": 0.9, "top_k": 40, "min_p": 0.05,
-            "chat_template": "deepseek", "required_memory_gb": 10
-        },
         "deepseek-ai/deepseek-coder-6.7b-instruct": {
             "max_tokens": 4096, "temp": 0.1, "top_p": 0.95, "top_k": 20, "min_p": 0.1,
             "chat_template": "deepseek", "required_memory_gb": 6

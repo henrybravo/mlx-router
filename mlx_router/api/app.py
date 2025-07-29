@@ -8,7 +8,7 @@ import hashlib
 import json
 import logging
 import time
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -46,6 +46,8 @@ class ChatCompletionRequest(BaseModel):
     top_k: Optional[int] = Field(None, ge=1, le=200, description="top_k must be between 1 and 200")
     max_tokens: Optional[int] = Field(None, ge=1, le=131072, description="max_tokens must be between 1 and 131072")
     stream: Optional[bool] = None  # Will use config default if None
+    tools: Optional[List[Dict[str, Any]]] = None  # Function calling tools
+    tool_choice: Optional[str] = None  # "none", "auto", or specific tool name
     
     @validator('messages')
     def validate_messages(cls, v):
@@ -143,6 +145,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
                 # Stream tokens from model manager
                 async for token in model_manager.generate_stream_response(
                     request.messages,
+                    request.tools,
                     request.max_tokens,
                     request.temperature,
                     request.top_p,
@@ -216,9 +219,10 @@ async def create_chat_completion(request: ChatCompletionRequest):
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
     try:
-        content = await asyncio.to_thread(
+        response = await asyncio.to_thread(
             model_manager.generate_response,
             request.messages,
+            request.tools,
             request.max_tokens,
             request.temperature,
             request.top_p,
@@ -226,17 +230,40 @@ async def create_chat_completion(request: ChatCompletionRequest):
             getattr(request, 'min_p', None)
         )
         
-        if content.startswith("ERROR:"):
-            raise HTTPException(status_code=500, detail=content)
+        # Handle different response types
+        if response.get('type') == 'error':
+            raise HTTPException(status_code=500, detail=response['content'])
+        elif response.get('type') == 'tool_calls':
+            # Tool calls response
+            message = {
+                "role": "assistant",
+                "content": response['content'],
+                "tool_calls": response['tool_calls']
+            }
+            finish_reason = "tool_calls"
+        else:
+            # Standard text response
+            message = {
+                "role": "assistant", 
+                "content": response['content']
+            }
+            finish_reason = response.get('finish_reason', 'stop')
             
         response_payload = {
             "id": f"chatcmpl-{request_id}", 
             "object": "chat.completion", 
+            "created": int(time.time()),
             "model": request.model, 
             "choices": [{
-                "message": {"role": "assistant", "content": content},
-                "finish_reason": "stop"
-            }]
+                "index": 0,
+                "message": message,
+                "finish_reason": finish_reason
+            }],
+            "usage": {
+                "prompt_tokens": 0,  # TODO: Implement token counting
+                "completion_tokens": 0,
+                "total_tokens": 0
+            }
         }
         logger.info(f"ReqID-{request_id}: Successfully processed non-streaming request.")
         return JSONResponse(content=response_payload)
