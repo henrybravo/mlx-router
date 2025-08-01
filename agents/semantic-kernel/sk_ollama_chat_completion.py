@@ -1,5 +1,8 @@
-# Copyright (c) Microsoft. All rights reserved.
+# This example takes the ollama_chat_completion.py as the source example
+# but works with the mlx-router local models instead of ollama
+# https://github.com/henrybravo/mlx-router
 
+# Copyright (c) Microsoft. All rights reserved.
 
 import asyncio
 

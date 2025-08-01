@@ -1,0 +1,18 @@
+name: Vision_Chat_Prompt
+template: |
+    <message role="system">
+        You are an AI assistant designed to help with image recognition tasks.
+    </message>
+    <message role="user">
+        <text>{{request}}</text>
+        <imageDescription>{{imageDescription}}</imageDescription>
+    </message>
+template_format: handlebars
+description: Vision chat prompt template for text-based image descriptions.
+input_variables:
+  - name: request
+    description: Request details.
+    is_required: true
+  - name: imageDescription
+    description: Text description of the image.
+    is_required: true
