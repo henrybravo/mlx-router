@@ -1,6 +1,12 @@
 # MLX Router
 
-A powerful and efficient server for dynamically **routing API requests to multiple MLX models**, powered by FastAPI. Beyond routing, it’s a **high-performance server**, leveraging GPU acceleration and robust features for local inference.
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![MLX](https://img.shields.io/badge/MLX-0.25.0%2B-orange.svg)](https://github.com/ml-explore/mlx)
+[![FastAPI](https://img.shields.io/badge/FastAPI-async-green.svg)](https://fastapi.tiangolo.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub](https://img.shields.io/github/stars/henrybravo/mlx-router?style=social)](https://github.com/henrybravo/mlx-router)
+
+A powerful and efficient server for dynamically **routing API requests to multiple MLX models**, powered by FastAPI. Beyond routing, it's a **high-performance server**, leveraging GPU acceleration and robust features for local inference.
 
 ![mlx-router](images/mlx-router-help-menu.png)
 
