@@ -1,0 +1,102 @@
+{
+  "temperature_tests": [
+    {
+      "temp": 0.1,
+      "diversity": 0.7885171790235082,
+      "coherence": 0.45931283905967446,
+      "combined_score": 0.47760825010073327
+    },
+    {
+      "temp": 0.3,
+      "diversity": 0.7629166666666667,
+      "coherence": 0.4458333333333333,
+      "combined_score": 0.4642188757248738
+    },
+    {
+      "temp": 0.5,
+      "diversity": 0.8030487804878048,
+      "coherence": 0.49542682926829273,
+      "combined_score": 0.5007660378112756
+    },
+    {
+      "temp": 0.7,
+      "diversity": 0.7578891067926548,
+      "coherence": 0.39400962738456047,
+      "combined_score": 0.4365392026402068
+    },
+    {
+      "temp": 0.9,
+      "diversity": 0.7674050632911392,
+      "coherence": 0.7111925383077948,
+      "combined_score": 0.5978742862224566
+    }
+  ],
+  "top_p_tests": [
+    {
+      "top_p": 0.8,
+      "unique_ratio": 0.8055555555555556
+    },
+    {
+      "top_p": 0.85,
+      "unique_ratio": 0.7916666666666666
+    },
+    {
+      "top_p": 0.9,
+      "unique_ratio": 0.7848101265822784
+    },
+    {
+      "top_p": 0.95,
+      "unique_ratio": 0.7857142857142857
+    },
+    {
+      "top_p": 0.99,
+      "unique_ratio": 0.7945205479452054
+    }
+  ],
+  "combined_tests": {
+    "creative": {
+      "config": {
+        "temp": 0.9,
+        "top_p": 0.8500000000000001
+      },
+      "generation_time": 32.6146080493927,
+      "response_length": 131,
+      "response_preview": "that exists in a world parallel to our own, and a young woman who discovers it.\nAs she walked throug..."
+    },
+    "technical": {
+      "config": {
+        "temp": 0.6000000000000001,
+        "top_p": 0.8
+      },
+      "generation_time": 32.994356870651245,
+      "response_length": 114,
+      "response_preview": "\nQuicksort is a popular sorting algorithm that uses a divide-and-conquer technique to sort an array ..."
+    },
+    "balanced": {
+      "config": {
+        "temp": 0.9,
+        "top_p": 0.8
+      },
+      "generation_time": 32.52254319190979,
+      "response_length": 121,
+      "response_preview": "and how it can help to reduce climate change\nDescribe the benefits of renewable energy and how it ca..."
+    }
+  },
+  "optimal_params": {
+    "temp": 0.9,
+    "top_p": 0.8,
+    "top_k": 40,
+    "min_p": 0.05
+  },
+  "notes": [
+    "Benchmarked on 3 diverse prompts",
+    "Best balance achieved with temp=0.90, top_p=0.80",
+    "Total benchmark time: 368.12 seconds"
+  ],
+  "metadata": {
+    "start_time": "2025-08-06T11:19:10.041150",
+    "model_load_time": 13.464402914047241,
+    "total_time": 368.119912,
+    "end_time": "2025-08-06T11:25:18.161067"
+  }
+}

@@ -5,3 +5,4 @@ huggingface-hub>=0.20.0
 pyfiglet>=1.0.0
 psutil>=7.0.0
 fastapi[all]>=0.115.0
+jsonschema>=4.0.0

@@ -203,7 +203,7 @@ fi
 if curl -s --max-time 5 http://localhost:8800/health >/dev/null 2>&1; then
     log_success "API endpoint responding"
 else
-    log_warning "API endpoint not yet responding (may still be starting up)"
+    log_warning "API endpoint not yet responding (may still be starting up) or you have specified another port than default 8800 in config.json"
 fi
 
 echo ""
