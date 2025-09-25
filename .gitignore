@@ -1,7 +1,7 @@
+*.md
 !README.md
-!AGENTS.md 
+!AGENTS.md
 !INSTALL_TEST.md
-.md
 logs/
 dev_tests/
 
