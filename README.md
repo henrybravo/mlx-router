@@ -27,19 +27,47 @@ A powerful and efficient server for dynamically **routing API requests to multip
 
 ## Supported Models
 
-Any mlx model that is available locally and configured in config.json (recommended use). As an example the router currently supports the following models without having to use the config.json:
+MLX Router supports **any MLX model** that is available locally. Models are automatically discovered from configured directories and can be loaded dynamically without server restart.
 
-- `mlx-community/Qwen3-30B-A3B-8bit`
-- `mlx-community/Llama-3.3-70B-Instruct-8bit`
-- `mlx-community/Llama-3.2-3B-Instruct-4bit`
-- `mlx-community/DeepSeek-R1-0528-Qwen3-8B-8bit`
-- `deepseek-ai/deepseek-coder-6.7b-instruct`
-- `mlx-community/Phi-4-reasoning-plus-6bit`
+### Local Model Directory Support (v2.1.2)
 
-You can use the `--config` argument to also load external model configurations from `config.json`.
+Models are loaded from local directories (default: `$HOME/models`) with automatic configuration detection:
+
+- **Automatic Discovery**: Models placed in the configured directory are automatically detected
+- **Dynamic Configuration**: Model parameters are extracted from local `config.json` files
+- **Hot-Swapping**: Switch between models without restarting the server
+- **Fallback Support**: Still supports HuggingFace Hub loading for missing local models
+
+### Currently Configured Models
+
+The router comes pre-configured with these locally available models:
+
+- `mlx-community/Llama-3.3-70B-Instruct-4bit` (40GB RAM)
+- `mlx-community/Qwen3-30B-A3B-8bit` (18GB RAM)
+- `mlx-community/Phi-4-reasoning-plus-6bit` (12GB RAM)
+- `deepseek-ai/deepseek-coder-6.7b-instruct` (8GB RAM)
+
+### Model Directory Structure
+
+```
+$HOME/models/
+├── mlx-community--Llama-3.3-70B-Instruct-4bit/
+│   └── snapshots/
+│       └── [commit-hash]/
+│           ├── config.json
+│           ├── tokenizer.json
+│           └── model.safetensors
+└── custom-models/
+    └── my-model/
+        ├── config.json
+        ├── tokenizer.json
+        └── model.safetensors
+```
+
+Use the `--config` argument to load additional model configurations from `config.json`.
 
 You can use the helper tools in `helper_tools/` directory:
-- `mlx_downloader.py` - Download MLX models
+- `mlx_downloader.py` - Download MLX models to custom directories (supports `MLX_MODEL_DIR`)
 - `mlx_lmstudio_linker.py` - Link models to LM Studio
 - `mlx_model_parameter_discovery_tool.py` - Auto-discover optimal parameters
 
@@ -323,9 +351,10 @@ Example configuration structure:
       "memory_threshold_gb": 2.0,
       "stream": false,
       "enable_function_calling": true,
-      "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+      "model": "mlx-community/Llama-3.3-70B-Instruct-4bit",
       "stream_chunk_size": 32,
-      "warmup_tokens": 5
+      "warmup_tokens": 5,
+      "model_directory": "/Users/username/models"
   },
   "server": {
       "ip": "10.3.2.1",
@@ -333,16 +362,42 @@ Example configuration structure:
       "debug": false
   },
   "models": {
-    "model-name": {
+    "mlx-community/Llama-3.3-70B-Instruct-4bit": {
       "max_tokens": 8192,
       "temp": 0.7,
+      "top_p": 0.95,
+      "top_k": 50,
+      "min_p": 0.05,
       "chat_template": "llama3",
+      "required_memory_gb": 40,
+      "supports_tools": true,
+      "memory_pressure_max_tokens": {
+        "normal": 4096,
+        "moderate": 2048,
+        "high": 1024,
+        "critical": 512
+      }
+    },
+    "deepseek-ai/deepseek-coder-6.7b-instruct": {
+      "max_tokens": 4096,
+      "temp": 0.1,
+      "top_p": 0.95,
+      "top_k": 20,
+      "min_p": 0.1,
+      "chat_template": "deepseek",
       "required_memory_gb": 8,
       "supports_tools": true
     }
   }
 }
 ```
+
+### Model Directory Configuration
+
+- **`model_directory`**: Path to local model storage (default: `"$HOME/models"`)
+- **Environment Variable**: `MLX_MODEL_DIR` can override the config setting
+- **Automatic Discovery**: Models placed in this directory are automatically detected
+- **HuggingFace Cache Format**: Supports both direct directories and HF cache naming (`models--org--model`)
 
 ## Logging
 
@@ -481,6 +536,16 @@ For comprehensive setup guides and examples, see **[AGENTS.md](AGENTS.md)**
 - **OpenWebUI** - Web interface for local LLM interactions with streaming support
 - **Goose** - AI-powered developer assistant for terminal environments
 
+## What's New in v2.1.2
+
+**📁 Custom Model Directory Loading**
+- **Local Model Support** - Load models from any local directory (default: `$HOME/models`)
+- **Automatic Discovery** - Models placed in configured directory are automatically detected
+- **Dynamic Configuration** - Model parameters extracted from local `config.json` files
+- **HuggingFace Cache Compatible** - Supports both direct directories and HF cache naming
+- **Environment Variable Support** - `MLX_MODEL_DIR` for custom directory configuration
+- **Hot-Swapping** - Switch between local models without server restart
+
 ## What's New in v2.1.0
 
 **🌊 Response Streaming**
@@ -489,7 +554,7 @@ For comprehensive setup guides and examples, see **[AGENTS.md](AGENTS.md)**
 - **Async generators** - Non-blocking streaming with FastAPI
 - **Memory efficient** - Reduced peak memory usage during generation
 
-**🔧 Function Calling** 
+**🔧 Function Calling**
 - **OpenAI-compatible** - Full compliance with function calling API
 - **Prompt engineering** - Tool instructions injected into model prompts
 - **JSON parsing** - Robust extraction and validation of tool calls
