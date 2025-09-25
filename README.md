@@ -1,6 +1,6 @@
 # MLX Router
 
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![MLX](https://img.shields.io/badge/MLX-0.25.0%2B-orange.svg)](https://github.com/ml-explore/mlx)
 [![FastAPI](https://img.shields.io/badge/FastAPI-async-green.svg)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -36,7 +36,8 @@ Models are loaded from local directories (default: `$HOME/models`) with automati
 - **Automatic Discovery**: Models placed in the configured directory are automatically detected
 - **Dynamic Configuration**: Model parameters are extracted from local `config.json` files
 - **Hot-Swapping**: Switch between models without restarting the server
-- **Fallback Support**: Still supports HuggingFace Hub loading for missing local models
+- **Fallback Support**: Downloads any HuggingFace model to the custom directory if not found locally
+- **Cache Management**: Existing models in `~/.cache/huggingface/hub` can be symlinked to the custom directory
 
 ### Currently Configured Models
 
@@ -121,7 +122,7 @@ The router supports multiple chat template formats:
 
 ## Prerequisites
 
-- Python 3.10+ (tested with 3.11 and 3.13)
+- Python 3.11+ (tested with 3.11 and 3.13)
 - MLX-compatible GPU
 - `uv` package manager (recommended)
 
@@ -138,29 +139,29 @@ cd mlx-router
 2. Set up the environment using `uv`:
 ```bash
 pip install uv
-uv venv --python 3.11 # uv venv
+uv venv --python 3.11
 source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
 ### System Service Installation (macOS)
 
-For production deployment as a system service that starts automatically:
+For production deployment as a user service that starts automatically:
 
 **Prerequisites:**
 - macOS (Darwin-based system)
-- Python 3.10+ installed
+- Python 3.11+ installed
 - `uv` package manager (optional, but recommended for faster installation)
 
 ```bash
-# Install as a system service
+# Install as a user service (no sudo required)
 ./install-launchd.sh
 
 # Check service status
-sudo launchctl list | grep mlx-router
+launchctl list | grep mlx-router
 
 # View logs
-tail -f /usr/local/opt/mlx-router/logs/mlx_router.log
+tail -f ~/mlx_router_app/logs/mlx_router.log
 ```
 
 **Installation Features:**
@@ -170,42 +171,53 @@ tail -f /usr/local/opt/mlx-router/logs/mlx_router.log
 - 🧪 **Installation verification**: Tests service startup and API availability
 - 🔧 **Self-healing dependencies**: Automatically detects and fixes missing Python packages
 - 🎯 **Application testing**: Verifies main.py imports work before service installation
+- 🏠 **User-space installation**: Installs to `~/mlx_router_app` without requiring elevated privileges
 
 **Configuration in Production Mode:**
 
 The installation script automatically:
-- Copies `config.json` to `/usr/local/etc/mlx-router/config.json`
-- Configures the service to use this system-level config file
-- The service runs with `--config /usr/local/etc/mlx-router/config.json`
+- Copies `config.json` to `~/mlx_router_app/config.json`
+- Configures the service to use this user-level config file
+- The service runs with `--config ~/mlx_router_app/config.json`
 - **Enables automatic restart**: Service automatically restarts if the application crashes
-- **Boot persistence**: Service starts automatically when the system boots
+- **Login persistence**: Service starts automatically when you log in
 
 **Modifying Production Configuration:**
 ```bash
 # Backup current config (recommended)
-cp /usr/local/etc/mlx-router/config.json /usr/local/etc/mlx-router/config.json.backup
+cp ~/mlx_router_app/config.json ~/mlx_router_app/config.json.backup
 
 # Edit the production config file
-nano /usr/local/etc/mlx-router/config.json
+nano ~/mlx_router_app/config.json
 
 # Restart service to apply changes
-sudo launchctl unload /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
-sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
+launchctl unload ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
+launchctl load ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 
 # Verify changes in logs
-tail -f /usr/local/opt/mlx-router/logs/mlx-router.log
+tail -f ~/mlx_router_app/logs/mlx-router.log
 ```
 
 **Service Management:**
 ```bash
 # Stop service
-sudo launchctl unload /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
+launchctl unload ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 
 # Start service
-sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
+launchctl load ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 
 # Uninstall service
 ./uninstall-launchd.sh
+```
+
+**Custom Installation Directory:**
+```bash
+# Install to a custom directory
+INSTALL_DIR=/path/to/custom/dir ./install-launchd.sh
+
+# Or set the environment variable first
+export INSTALL_DIR=/path/to/custom/dir
+./install-launchd.sh
 ```
 
 ## Usage
@@ -222,9 +234,9 @@ python main.py -h
 python main.py --config config.json
 ```
 
-### Production Mode (System Service)
+### Production Mode (User Service)
 
-Once installed as a system service, MLX Router runs automatically and can be accessed immediately:
+Once installed as a user service, MLX Router runs automatically and can be accessed immediately:
 ```bash
 # Service runs automatically after installation
 # Access API directly
@@ -335,10 +347,10 @@ The `config.json` file allows you to:
 - Use local `config.json` in project directory
 - Specify with `python main.py --config config.json`
 
-**Production Mode (System Service):**
-- Configuration automatically copied to `/usr/local/etc/mlx-router/config.json`
-- Service configured to use this system-level config
-- Edit with: `sudo nano /usr/local/etc/mlx-router/config.json`
+**Production Mode (User Service):**
+- Configuration automatically copied to `~/mlx_router_app/config.json`
+- Service configured to use this user-level config
+- Edit with: `nano ~/mlx_router_app/config.json`
 - Restart service after changes to apply modifications
 
 Example configuration structure:
@@ -404,10 +416,10 @@ Example configuration structure:
 ### Development Mode
 Logs are written to both console and `logs/mlx_router.log` file.
 
-### Production Mode (System Service)
+### Production Mode (User Service)
 Logs are written to application log files:
-- **Standard Output**: `/usr/local/opt/mlx-router/logs/mlx_router.log`
-- **Error Output**: `/usr/local/opt/mlx-router/logs/mlx_router.error.log`
+- **Standard Output**: `~/mlx_router_app/logs/mlx_router.log`
+- **Error Output**: `~/mlx_router_app/logs/mlx_router.error.log`
 
 **Log Information:**
 - Model loading/unloading with timing metrics
@@ -419,13 +431,13 @@ Logs are written to application log files:
 **View Logs:**
 ```bash
 # Real-time monitoring
-tail -f /usr/local/opt/mlx-router/logs/mlx_router.log
+tail -f ~/mlx_router_app/logs/mlx_router.log
 
 # View recent entries
-tail -50 /usr/local/opt/mlx-router/logs/mlx_router.log
+tail -50 ~/mlx_router_app/logs/mlx_router.log
 
 # Check for errors
-tail -50 /usr/local/opt/mlx-router/logs/mlx_router.error.log
+tail -50 ~/mlx_router_app/logs/mlx_router.error.log
 ```
 
 ## Crash Recovery & Reliability
@@ -435,20 +447,20 @@ tail -50 /usr/local/opt/mlx-router/logs/mlx_router.error.log
 The launchd service is configured with `KeepAlive=true`, providing robust crash recovery:
 
 - **Automatic Restart**: If the Python process crashes (malloc errors, segfaults, etc.), launchd automatically restarts the service
-- **Boot Persistence**: Service starts automatically when the system boots
+- **Login Persistence**: Service starts automatically when you log in
 - **Process Monitoring**: launchd continuously monitors the process health
-- **Crash Logging**: All crashes and restarts are logged to `/usr/local/opt/mlx-router/logs/mlx_router.error.log`
+- **Crash Logging**: All crashes and restarts are logged to `~/mlx_router_app/logs/mlx_router.error.log`
 
 **Monitor Crash Recovery:**
 ```bash
 # Watch for service restarts in real-time
-tail -f /usr/local/opt/mlx-router/logs/mlx_router.log | grep -E "(Starting|Stopping|Error)"
+tail -f ~/mlx_router_app/logs/mlx_router.log | grep -E "(Starting|Stopping|Error)"
 
 # Check crash history
-grep -i "crash\|error\|restart" /usr/local/opt/mlx-router/logs/mlx_router.error.log
+grep -i "crash\|error\|restart" ~/mlx_router_app/logs/mlx_router.error.log
 
 # View service status and restart count
-sudo launchctl print system/com.henrybravo.mlx-router
+launchctl print gui/$(id -u)/com.henrybravo.mlx-router
 ```
 
 **Example Crash Recovery Flow:**
@@ -485,25 +497,25 @@ curl -s -X POST http://localhost:8800/v1/chat/completions \
 ### Service Issues
 ```bash
 # Check service status
-sudo launchctl print system/com.henrybravo.mlx-router
+launchctl print gui/$(id -u)/com.henrybravo.mlx-router
 
 # Manual start for debugging
-sudo /usr/local/opt/mlx-router/venv/bin/python \
-  /usr/local/opt/mlx-router/main.py \
-  --config /usr/local/etc/mlx-router/config.json
+~/mlx_router_app/venv/bin/python \
+  ~/mlx_router_app/main.py \
+  --config ~/mlx_router_app/config.json
 
 # Restart service
-sudo launchctl unload /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
-sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
+launchctl unload ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
+launchctl load ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 ```
 
 ### Common Issues
 
 **Installation Issues:**
-- **Python version too old**: Install Python 3.10+ before running the install script
+- **Python version too old**: Install Python 3.11+ before running the install script
 - **Missing files**: Ensure all required files are present in the project directory
-- **Permission denied**: Run install script with proper sudo permissions
-- **uv not found warning**: Install `uv` with `pip install uv` for faster installation (optional)
+- **Permission denied**: The install script now runs in user space and doesn't require sudo
+- **uv not found warning**: Install `uv` globally with `pip install uv` for faster installation (optional)
 - **Missing dependencies**: The install script automatically detects and fixes missing dependencies
 - **Installation failure**: Re-run `./install-launchd.sh` - it includes self-healing dependency resolution
 
@@ -511,8 +523,8 @@ sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
 - **Service won't start**: Check error logs and verify Python dependencies
 - **API not responding**: Ensure port 8800 is available and not blocked
 - **Model loading fails**: Verify models exist and have sufficient memory
-- **Config changes not applied**: Restart the service after modifying `/usr/local/etc/mlx-router/config.json`
-- **Invalid config format**: Validate JSON syntax with `python -m json.tool /usr/local/etc/mlx-router/config.json`
+- **Config changes not applied**: Restart the service after modifying `~/mlx_router_app/config.json`
+- **Invalid config format**: Validate JSON syntax with `python -m json.tool ~/mlx_router_app/config.json`
 - **Memory-related crashes**: MLX memory errors automatically trigger service restart (production mode)
 - **Frequent crashes**: Check error logs for patterns and ensure sufficient system memory for models
 

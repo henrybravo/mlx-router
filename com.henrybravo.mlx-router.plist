@@ -6,17 +6,22 @@
     <string>com.henrybravo.mlx-router</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/opt/mlx-router/venv/bin/python</string>
-        <string>/usr/local/opt/mlx-router/main.py</string>
+        <string>__INSTALL_DIR__/venv/bin/python</string>
+        <string>__INSTALL_DIR__/main.py</string>
         <string>--config</string>
-        <string>/usr/local/etc/mlx-router/config.json</string>
+        <string>__INSTALL_DIR__/config.json</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/usr/local/opt/mlx-router</string>
+    <string>__INSTALL_DIR__</string>
     <key>StandardOutPath</key>
-    <string>/usr/local/opt/mlx-router/logs/mlx_router.log</string>
+    <string>__INSTALL_DIR__/logs/mlx_router.log</string>
     <key>StandardErrorPath</key>
-    <string>/usr/local/opt/mlx-router/logs/mlx_router.error.log</string>
+    <string>__INSTALL_DIR__/logs/mlx_router.error.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HF_HUB_CACHE</key>
+        <string>__HOME__/models</string>
+    </dict>
     <key>KeepAlive</key>
     <true/>
     <key>RunAtLoad</key>

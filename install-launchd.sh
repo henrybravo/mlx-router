@@ -3,6 +3,12 @@
 
 set -e
 
+# Configurable install directory (defaults to $HOME/mlx_router_app)
+INSTALL_DIR="${INSTALL_DIR:-$HOME/mlx_router_app}"
+
+# Set the python venv version you want to run mlx_router: 3.11-3.13
+VENV_PYTHON_VERSION="3.13"
+
 echo "🚀 Installing MLX Router..."
 
 # Colors for output
@@ -38,21 +44,39 @@ if [[ "$OSTYPE" != "darwin"* ]]; then
     exit 1
 fi
 
-# Check Python 3.10+
-if ! command -v python3 &> /dev/null; then
-    log_error "Python 3 is not installed. Please install Python 3.10+ first."
-    exit 1
+# Check for Python 3.11+ (try 3.13, 3.12, 3.11 in order)
+PYTHON_CMD=""
+PYTHON_VERSION=""
+
+for version in 13 12 11; do
+    if command -v python3.${version} &> /dev/null; then
+        candidate_version=$(python3.${version} -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null)
+        if [[ "$candidate_version" == "3.${version}" ]]; then
+            PYTHON_CMD="python3.${version}"
+            PYTHON_VERSION="$candidate_version"
+            break
+        fi
+    fi
+done
+
+# Fallback to python3 if specific versions not found
+if [[ -z "$PYTHON_CMD" ]]; then
+    if command -v python3 &> /dev/null; then
+        PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+        REQUIRED_VERSION="3.11"
+        if [[ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" == "$REQUIRED_VERSION" ]]; then
+            PYTHON_CMD="python3"
+        else
+            log_error "Python $PYTHON_VERSION found, but Python 3.11+ is required"
+            exit 1
+        fi
+    else
+        log_error "Python 3.11+ is not installed. Please install Python 3.11+ first."
+        exit 1
+    fi
 fi
 
-PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-REQUIRED_VERSION="3.12"
-
-if [[ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]]; then
-    log_error "Python $PYTHON_VERSION found, but Python $REQUIRED_VERSION+ is required"
-    exit 1
-fi
-
-log_success "Python $PYTHON_VERSION found"
+log_success "Python $PYTHON_VERSION found (using $PYTHON_CMD)"
 
 # Check for uv availability
 USE_UV=false
@@ -64,9 +88,9 @@ else
 fi
 
 # Check if service already exists
-if sudo launchctl list | grep -q com.henrybravo.mlx-router; then
+if launchctl list | grep -q com.henrybravo.mlx-router; then
     log_warning "MLX Router service already exists. Unloading existing service..."
-    sudo launchctl unload /Library/LaunchDaemons/com.henrybravo.mlx-router.plist 2>/dev/null || true
+    launchctl unload "$HOME/Library/LaunchAgents/com.henrybravo.mlx-router.plist" 2>/dev/null || true
 fi
 
 # Get current directory
@@ -83,39 +107,35 @@ for file in "${REQUIRED_FILES[@]}"; do
 done
 log_success "All required files found"
 
+log_info "Installing in venv with python $VENV_PYTHON_VERSION version"
+
 # Create directories
-log_info "Creating system directories..."
-sudo mkdir -p /usr/local/opt/mlx-router/logs
-sudo mkdir -p /usr/local/etc/mlx-router
-log_success "System directories created"
+log_info "Creating user directories..."
+mkdir -p "$INSTALL_DIR/logs"
+log_success "User directories created"
 
 # Copy files
 log_info "Copying application files..."
-sudo cp -r "$SCRIPT_DIR/mlx_router" "$SCRIPT_DIR/main.py" "$SCRIPT_DIR/requirements.txt" "$SCRIPT_DIR/logs" /usr/local/opt/mlx-router/
-sudo cp "$SCRIPT_DIR/config.json" /usr/local/etc/mlx-router/
+cp -r "$SCRIPT_DIR/mlx_router" "$SCRIPT_DIR/main.py" "$SCRIPT_DIR/requirements.txt" "$SCRIPT_DIR/logs" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/config.json" "$INSTALL_DIR/"
 log_success "Application files copied"
 
 # Create virtual environment
 log_info "Creating Python virtual environment..."
-sudo python3 -m venv /usr/local/opt/mlx-router/venv
-sudo chown -R root:wheel /usr/local/opt/mlx-router/venv
+if [[ "$USE_UV" == true ]]; then
+    log_info "Creating venv with uv..."
+    uv venv --python $VENV_PYTHON_VERSION --seed "$INSTALL_DIR/venv"
+else
+    $PYTHON_CMD -m venv "$INSTALL_DIR/venv"
+fi
 log_success "Virtual environment created"
 
 # Install Python dependencies
 log_info "Installing Python dependencies..."
 if [[ "$USE_UV" == true ]]; then
-    # Use uv for installation (faster)
-    log_info "Installing uv package manager..."
-    if ! sudo /usr/local/opt/mlx-router/venv/bin/python -m pip install uv; then
-        log_error "Failed to install uv, falling back to pip"
-        USE_UV=false
-    fi
-fi
-
-if [[ "$USE_UV" == true ]]; then
     log_info "Installing dependencies with uv..."
-    # Force uv to use the correct virtual environment
-    if ! sudo VIRTUAL_ENV=/usr/local/opt/mlx-router/venv /usr/local/opt/mlx-router/venv/bin/uv pip install --python /usr/local/opt/mlx-router/venv/bin/python -r /usr/local/opt/mlx-router/requirements.txt; then
+    # Use global uv with local cache to avoid permission issues
+    if ! uv --cache-dir "$INSTALL_DIR/.cache" pip install --python "$INSTALL_DIR/venv/bin/python" -r "$INSTALL_DIR/requirements.txt"; then
         log_error "uv installation failed, falling back to pip"
         USE_UV=false
     fi
@@ -124,9 +144,9 @@ fi
 if [[ "$USE_UV" == false ]]; then
     # Use standard pip with optimizations
     log_info "Upgrading pip..."
-    sudo /usr/local/opt/mlx-router/venv/bin/pip install --upgrade pip
+    "$INSTALL_DIR/venv/bin/pip" install --upgrade pip
     log_info "Installing dependencies with pip..."
-    sudo /usr/local/opt/mlx-router/venv/bin/pip install -r /usr/local/opt/mlx-router/requirements.txt
+    "$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
 fi
 
 # Verify and fix critical dependencies
@@ -135,7 +155,7 @@ CRITICAL_DEPS=("mlx" "mlx_lm" "fastapi" "pyfiglet" "psutil" "uvicorn")
 FAILED_DEPS=()
 
 for dep in "${CRITICAL_DEPS[@]}"; do
-    if ! sudo /usr/local/opt/mlx-router/venv/bin/python -c "import $dep" 2>/dev/null; then
+    if ! "$INSTALL_DIR/venv/bin/python" -c "import $dep" 2>/dev/null; then
         log_warning "Dependency '$dep' not found, attempting to install individually..."
         FAILED_DEPS+=("$dep")
     fi
@@ -146,13 +166,13 @@ if [[ ${#FAILED_DEPS[@]} -gt 0 ]]; then
     log_info "Installing missing dependencies individually..."
     for dep in "${FAILED_DEPS[@]}"; do
         log_info "Installing $dep..."
-        if ! sudo /usr/local/opt/mlx-router/venv/bin/pip install "$dep"; then
+        if ! "$INSTALL_DIR/venv/bin/pip" install "$dep"; then
             log_error "Failed to install critical dependency '$dep'"
             exit 1
         fi
-        
+
         # Verify the fix worked
-        if sudo /usr/local/opt/mlx-router/venv/bin/python -c "import $dep" 2>/dev/null; then
+        if "$INSTALL_DIR/venv/bin/python" -c "import $dep" 2>/dev/null; then
             log_success "$dep installed successfully"
         else
             log_error "$dep still not working after installation"
@@ -163,17 +183,17 @@ fi
 
 # Final verification of main.py imports
 log_info "Testing main application imports..."
-if ! sudo /usr/local/opt/mlx-router/venv/bin/python -c "import sys; sys.path.insert(0, '/usr/local/opt/mlx-router'); import main" 2>/dev/null; then
+if ! "$INSTALL_DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$INSTALL_DIR'); import main" 2>/dev/null; then
     log_error "main.py import test failed. Attempting to fix..."
-    
+
     # Try reinstalling all requirements as a last resort
     log_info "Reinstalling all requirements..."
-    sudo /usr/local/opt/mlx-router/venv/bin/pip install --force-reinstall -r /usr/local/opt/mlx-router/requirements.txt
-    
+    "$INSTALL_DIR/venv/bin/pip" install --force-reinstall -r "$INSTALL_DIR/requirements.txt"
+
     # Test again
-    if ! sudo /usr/local/opt/mlx-router/venv/bin/python -c "import sys; sys.path.insert(0, '/usr/local/opt/mlx-router'); import main" 2>/dev/null; then
+    if ! "$INSTALL_DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$INSTALL_DIR'); import main" 2>/dev/null; then
         log_error "main.py import still failing after reinstall. Check error details:"
-        sudo /usr/local/opt/mlx-router/venv/bin/python -c "import sys; sys.path.insert(0, '/usr/local/opt/mlx-router'); import main" 2>&1 | head -5
+        "$INSTALL_DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$INSTALL_DIR'); import main" 2>&1 | head -5
         exit 1
     fi
 fi
@@ -181,10 +201,11 @@ fi
 log_success "All Python dependencies verified and working"
 
 # Install launchd plist
-log_info "Installing system service..."
-sudo cp "$SCRIPT_DIR/com.henrybravo.mlx-router.plist" /Library/LaunchDaemons/
-sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
-log_success "System service installed and started"
+log_info "Installing user service..."
+mkdir -p "$HOME/Library/LaunchAgents"
+sed "s|__INSTALL_DIR__|$INSTALL_DIR|g; s|__HOME__|$HOME|g" "$SCRIPT_DIR/com.henrybravo.mlx-router.plist" > "$HOME/Library/LaunchAgents/com.henrybravo.mlx-router.plist"
+launchctl load "$HOME/Library/LaunchAgents/com.henrybravo.mlx-router.plist"
+log_success "User service installed and started"
 
 # Wait for service to start
 log_info "Waiting for service to start..."
@@ -192,10 +213,10 @@ sleep 3
 
 # Verify installation
 log_info "Verifying installation..."
-if sudo launchctl list | grep -q com.henrybravo.mlx-router; then
+if launchctl list | grep -q com.henrybravo.mlx-router; then
     log_success "Service is running"
 else
-    log_error "Service failed to start - check logs at /usr/local/opt/mlx-router/logs/mlx-router.error.log"
+    log_error "Service failed to start - check logs at $INSTALL_DIR/logs/mlx_router.error.log"
     exit 1
 fi
 
@@ -211,10 +232,10 @@ log_success "MLX Router installed and started successfully!"
 echo ""
 echo "📍 API: http://localhost:8800"
 echo "📄 Interactive docs: http://localhost:8800/docs"
-echo "📊 Logs: /usr/local/opt/mlx-router/logs/mlx_router.log"
-echo "🚫 Error logs: /usr/local/opt/mlx-router/logs/mlx_router.error.log"
+echo "📊 Logs: $INSTALL_DIR/logs/mlx_router.log"
+echo "🚫 Error logs: $INSTALL_DIR/logs/mlx_router.error.log"
 echo ""
 echo "🔧 Management commands:"
-echo "   Stop:      sudo launchctl unload /Library/LaunchDaemons/com.henrybravo.mlx-router.plist"
-echo "   Start:     sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist"
+echo "   Stop:      launchctl unload ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist"
+echo "   Start:     launchctl load ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist"
 echo "   Uninstall: ./uninstall-launchd.sh"
