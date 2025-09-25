@@ -58,7 +58,8 @@ file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(formatter)
 
 # Add handlers to root logger
-root_logger.addHandler(stdout_handler)
+if sys.stdout.isatty():
+    root_logger.addHandler(stdout_handler)
 root_logger.addHandler(stderr_handler)
 root_logger.addHandler(file_handler)
 
