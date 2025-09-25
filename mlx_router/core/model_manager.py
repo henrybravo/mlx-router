@@ -17,9 +17,12 @@ from typing import Optional, List, Dict, Any
 try:
     from jsonschema import validate, ValidationError
 except ImportError:
-    logger.warning("jsonschema not installed. Tool validation will be limited.")
+    # logger will be defined later, so we'll warn then
     def validate(instance, schema): pass
     class ValidationError(Exception): pass
+    _jsonschema_available = False
+else:
+    _jsonschema_available = True
 
 import mlx.core as mx
 from mlx_lm import load, generate
@@ -29,6 +32,10 @@ from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.resource_monitor import ResourceMonitor
 
 logger = logging.getLogger(__name__)
+
+# Warn about missing jsonschema if needed
+if not _jsonschema_available:
+    logger.warning("jsonschema not installed. Tool validation will be limited.")
 
 # Pre-compile regex patterns for better performance
 CLEANUP_PATTERNS = [
@@ -201,26 +208,38 @@ class MLXModelManager:
 
         for model_name in ModelConfig.get_available_models():
             try:
-                if ".." in model_name or model_name.startswith("/") or model_name.endswith("/"):
+                # Skip potentially unsafe model names
+                if ".." in model_name:
                     logger.warning(f"Skipping potentially unsafe model name: {model_name}")
                     continue
-                
-                if model_name.count("/") != 1:
-                    logger.warning(f"Skipping invalid model format: {model_name}")
-                    continue
-                
+
+                # For absolute paths, validate they exist
+                if os.path.isabs(model_name):
+                    if not os.path.exists(model_name):
+                        logger.warning(f"Local model path does not exist: {model_name}")
+                        continue
+                else:
+                    # For relative names, check if they can be resolved to a local path or are valid HF identifiers
+                    resolved_path = ModelConfig.resolve_model_path(model_name)
+                    if resolved_path != model_name and not os.path.exists(resolved_path):
+                        # If it's a local model that doesn't exist, skip it
+                        if ModelConfig.get_model_directory():
+                            logger.warning(f"Local model {model_name} not found in {ModelConfig.get_model_directory()}")
+                            continue
+                        # If no local directory configured, assume it's a HF model and continue
+
                 # Check memory compatibility
                 required_memory = ModelConfig.get_config(model_name).get("required_memory_gb", 8)
                 if required_memory > memory_info["total_gb"]:
                     logger.warning(f"Model {model_name} requires {required_memory}GB but system only has {memory_info['total_gb']:.1f}GB total memory")
                     continue
-                
+
                 available.append(model_name)
                 logger.debug(f"Model available: {model_name} (requires {required_memory}GB)")
-                
+
             except Exception as e:
                 logger.warning(f"Model {model_name} validation failed: {e}")
-        
+
         # Sort by memory requirement for better loading order
         available.sort(key=lambda m: ModelConfig.get_config(m).get("required_memory_gb", 8))
         return available
@@ -235,20 +254,24 @@ class MLXModelManager:
     def load_model(self, model_name):
         if not model_name or model_name not in self.available_models:
             raise ValueError(f"Invalid or unavailable model name: {model_name}")
-            
+
         with self.model_lock:
             if self.current_model_name == model_name: return True
-            
+
             should_defer, reason = ResourceMonitor.should_defer_model_load(model_name)
             if should_defer:
                 raise RuntimeError(f"Cannot load {model_name}: {reason}")
 
             logger.info(f"🔄 Loading model: {model_name}")
             self._unload_current_model()
-            
+
             try:
                 start_time = time.time()
-                self.current_model, self.current_tokenizer = load(model_name)
+                # Resolve model path - check local directory first, then fall back to HuggingFace
+                resolved_model_path = ModelConfig.resolve_model_path(model_name)
+                logger.debug(f"Resolved model path: {resolved_model_path}")
+
+                self.current_model, self.current_tokenizer = load(resolved_model_path)
                 self._warmup_model()
                 self.current_model_name = model_name
                 mem_info = ResourceMonitor.get_memory_info()

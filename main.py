@@ -151,16 +151,30 @@ def main():
             if models_config and not isinstance(models_config, dict):
                 raise ValueError("'models' section must be a dictionary")
             
-            ModelConfig.load_from_dict(models_config)
             defaults = config_data.get('defaults', {})
             server_config = config_data.get('server', {})
-            
+
             # Validate defaults and server_config are dictionaries
             if defaults and not isinstance(defaults, dict):
                 raise ValueError("'defaults' section must be a dictionary")
             if server_config and not isinstance(server_config, dict):
                 raise ValueError("'server' section must be a dictionary")
-            
+
+            # Configure model directory from defaults
+            model_directory = defaults.get('model_directory')
+            if model_directory:
+                # Also check environment variable as fallback
+                import os
+                model_directory = os.environ.get('MLX_MODEL_DIR', model_directory)
+                ModelConfig.set_model_directory(model_directory)
+                logger.info(f"Configured model directory: {model_directory}")
+            elif os.environ.get('MLX_MODEL_DIR'):
+                # Use environment variable if set
+                ModelConfig.set_model_directory(os.environ['MLX_MODEL_DIR'])
+                logger.info(f"Using model directory from environment: {os.environ['MLX_MODEL_DIR']}")
+
+            ModelConfig.load_from_dict(models_config)
+
             # Apply config values only if CLI args weren't explicitly provided
             args.max_tokens = defaults.get('max_tokens', args.max_tokens)
             args.timeout = defaults.get('timeout', args.timeout)
