@@ -45,7 +45,7 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-REQUIRED_VERSION="3.10"
+REQUIRED_VERSION="3.12"
 
 if [[ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]]; then
     log_error "Python $PYTHON_VERSION found, but Python $REQUIRED_VERSION+ is required"
