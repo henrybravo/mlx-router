@@ -252,8 +252,15 @@ class MLXModelManager:
         return ModelConfig.suggest_best_model_for_memory(mem_info["available_gb"], prefer_performance=prefer_perf)
 
     def load_model(self, model_name):
-        if not model_name or model_name not in self.available_models:
-            raise ValueError(f"Invalid or unavailable model name: {model_name}")
+        if not model_name:
+            raise ValueError(f"Invalid model name: {model_name}")
+
+        # Allow loading if it's in available_models or if it's a potential HF model
+        if model_name not in self.available_models:
+            # Check if it's a reasonable HF identifier
+            if '/' not in model_name or len(model_name.split('/')) != 2:
+                raise ValueError(f"Invalid or unavailable model name: {model_name}")
+            logger.info(f"Attempting to load non-configured model: {model_name}")
 
         with self.model_lock:
             if self.current_model_name == model_name: return True

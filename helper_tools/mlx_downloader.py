@@ -8,19 +8,22 @@ import sys
 import shutil
 import os
 from pathlib import Path
+
+# Set HF_HUB_CACHE before importing huggingface_hub
+custom_dir = os.environ.get('MLX_MODEL_DIR')
+if custom_dir:
+    custom_dir = Path(custom_dir).expanduser().resolve()
+else:
+    custom_dir = Path.home() / "models"
+os.environ['HF_HUB_CACHE'] = str(custom_dir)
+
 from huggingface_hub import snapshot_download
 from mlx_lm import load
 import gc
 
 def get_custom_model_dir():
     """Get custom model directory from environment or default"""
-    # Check environment variable first
-    custom_dir = os.environ.get('MLX_MODEL_DIR')
-    if custom_dir:
-        return Path(custom_dir).expanduser().resolve()
-
-    # Default to ~/models
-    return Path.home() / "models"
+    return custom_dir
 
 def download_model(model_name, verify=True, force_redownload=False, custom_dir=None):
     """Download and optionally verify an MLX model"""
@@ -72,51 +75,39 @@ def download_model(model_name, verify=True, force_redownload=False, custom_dir=N
     print(f"📁 Target directory: {custom_dir}", flush=True)
 
     try:
-        # Set custom cache directory for download
-        original_cache = os.environ.get('HF_HUB_CACHE')
-        os.environ['HF_HUB_CACHE'] = str(custom_dir)
+        # Download model files
+        local_path = snapshot_download(
+            repo_id=model_name,
+            local_files_only=False,
+            force_download=force_redownload
+        )
+        print(f"✅ Downloaded to: {local_path}", flush=True)
 
-        try:
-            # Download model files
-            local_path = snapshot_download(
-                repo_id=model_name,
-                local_files_only=False,
-                force_download=force_redownload
-            )
-            print(f"✅ Downloaded to: {local_path}", flush=True)
+        # Verify final status
+        final_status, _, _ = get_model_status(model_name, custom_dir)
+        if final_status != "complete":
+            print(f"⚠️  Download may be incomplete (status: {final_status})", flush=True)
 
-            # Verify final status
-            final_status, _, _ = get_model_status(model_name, custom_dir)
-            if final_status != "complete":
-                print(f"⚠️  Download may be incomplete (status: {final_status})", flush=True)
+        if verify:
+            print("🔍 Verifying model loads correctly...", flush=True)
+            try:
+                model, tokenizer = load(model_name)
+                print(f"✅ Model verified: {model_name}", flush=True)
 
-            if verify:
-                print("🔍 Verifying model loads correctly...", flush=True)
-                try:
-                    model, tokenizer = load(model_name)
-                    print(f"✅ Model verified: {model_name}", flush=True)
+                # Clean up memory
+                del model, tokenizer
+                gc.collect()
 
-                    # Clean up memory
-                    del model, tokenizer
-                    gc.collect()
+            except Exception as e:
+                if "glm4_moe" in str(e).lower():
+                    print(f"⚠️  Model type 'glm4_moe' not supported by mlx_lm. Skipping verification.", flush=True)
+                    print(f"ℹ️  Model files are downloaded and may be usable with other tools.", flush=True)
+                    return True
+                print(f"❌ Model verification failed: {e}", flush=True)
+                print(f"ℹ️  Model files are downloaded but may be corrupted. Use 'force_redownload=True' to retry.", flush=True)
+                return False
 
-                except Exception as e:
-                    if "glm4_moe" in str(e).lower():
-                        print(f"⚠️  Model type 'glm4_moe' not supported by mlx_lm. Skipping verification.", flush=True)
-                        print(f"ℹ️  Model files are downloaded and may be usable with other tools.", flush=True)
-                        return True
-                    print(f"❌ Model verification failed: {e}", flush=True)
-                    print(f"ℹ️  Model files are downloaded but may be corrupted. Use 'force_redownload=True' to retry.", flush=True)
-                    return False
-
-            return True
-
-        finally:
-            # Restore original cache setting
-            if original_cache:
-                os.environ['HF_HUB_CACHE'] = original_cache
-            elif 'HF_HUB_CACHE' in os.environ:
-                del os.environ['HF_HUB_CACHE']
+        return True
 
     except Exception as e:
         print(f"❌ Download failed: {e}", flush=True)

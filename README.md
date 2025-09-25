@@ -1,7 +1,7 @@
 # MLX Router
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![MLX](https://img.shields.io/badge/MLX-0.25.0%2B-orange.svg)](https://github.com/ml-explore/mlx)
+[![MLX](https://img.shields.io/badge/MLX-0.29.0%2B-orange.svg)](https://github.com/ml-explore/mlx)
 [![FastAPI](https://img.shields.io/badge/FastAPI-async-green.svg)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/github/stars/henrybravo/mlx-router?style=social)](https://github.com/henrybravo/mlx-router)
