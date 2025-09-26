@@ -2,15 +2,21 @@
 
 ## Pre-Installation Checks
 
-1. **Verify all files are present:**
+1. **Set installation directory:**
+```bash
+INSTALL_DIR="${INSTALL_DIR:-$HOME/mlx_router_app}"
+echo "Installing to: $INSTALL_DIR"
+```
+
+2. **Verify all files are present:**
 ```bash
 ls -la main.py config.json com.henrybravo.mlx-router.plist mlx_router/ requirements.txt
 ```
 
-2. **Check for existing installations:**
+3. **Check for existing installations:**
 ```bash
-sudo launchctl list | grep mlx-router
-ls -la /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
+launchctl list | grep mlx-router
+ls -la ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 ```
 
 ## Installation Process
@@ -22,14 +28,13 @@ ls -la /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
 
 2. **Verify installation directories:**
 ```bash
-ls -la /usr/local/opt/mlx-router/
-ls -la /usr/local/etc/mlx-router/
-ls -la /usr/local/opt/mlx-router/logs/
+ls -la "$INSTALL_DIR/"
+ls -la "$INSTALL_DIR/logs/"
 ```
 
 3. **Check service status:**
 ```bash
-sudo launchctl list | grep mlx-router
+launchctl list | grep mlx-router
 ```
 
 ## Testing the Service
@@ -48,8 +53,8 @@ open http://localhost:8800/docs
 
 2. **Check log files:**
 ```bash
-tail -f /usr/local/opt/mlx-router/logs/mlx-router.log
-tail -f /usr/local/opt/mlx-router/logs/mlx-router.error.log
+tail -f "$INSTALL_DIR/logs/mlx-router.log"
+tail -f "$INSTALL_DIR/logs/mlx-router.error.log"
 ```
 
 3. **Test chat completion:**
@@ -67,42 +72,42 @@ curl -s -X POST http://localhost:8800/v1/chat/completions \
 
 1. **Stop service:**
 ```bash
-sudo launchctl unload /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
+launchctl unload ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 ```
 
 2. **Start service:**
 ```bash
-sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
+launchctl load ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 ```
 
 3. **Restart service:**
 ```bash
-sudo launchctl unload /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
-sudo launchctl load /Library/LaunchDaemons/com.henrybravo.mlx-router.plist
+launchctl unload ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
+launchctl load ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 ```
 
 ## Troubleshooting
 
 1. **Check service status:**
 ```bash
-sudo launchctl print system/com.henrybravo.mlx-router
+launchctl print gui/$(id -u)/com.henrybravo.mlx-router
 ```
 
 2. **View recent logs:**
 ```bash
-tail -50 /usr/local/opt/mlx-router/logs/mlx-router.log
-tail -50 /usr/local/opt/mlx-router/logs/mlx-router.error.log
+tail -50 "$INSTALL_DIR/logs/mlx-router.log"
+tail -50 "$INSTALL_DIR/logs/mlx-router.error.log"
 ```
 
 3. **Test Python environment:**
 ```bash
-sudo /usr/local/opt/mlx-router/venv/bin/python --version
-sudo /usr/local/opt/mlx-router/venv/bin/pip list | grep mlx
+"$INSTALL_DIR/venv/bin/python" --version
+"$INSTALL_DIR/venv/bin/pip" list | grep mlx
 ```
 
 4. **Manual service start (for debugging):**
 ```bash
-/usr/local/opt/mlx-router/venv/bin/python /usr/local/opt/mlx-router/main.py --config /usr/local/etc/mlx-router/config.json
+"$INSTALL_DIR/venv/bin/python" "$INSTALL_DIR/main.py" --config "$INSTALL_DIR/config.json"
 ```
 
 ## Uninstallation
@@ -118,5 +123,5 @@ sudo /usr/local/opt/mlx-router/venv/bin/pip list | grep mlx
 - ✅ Health endpoint returns status
 - ✅ Models endpoint lists available models
 - ✅ Chat completions work with available models
-- ✅ Logs are written to /usr/local/var/log/
+- ✅ Logs are written to $INSTALL_DIR/logs/
 - ✅ Service restarts automatically if it crashes
