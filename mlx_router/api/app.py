@@ -48,6 +48,7 @@ class ChatCompletionRequest(BaseModel):
     stream: Optional[bool] = None  # Will use config default if None
     tools: Optional[List[Dict[str, Any]]] = None  # Function calling tools
     tool_choice: Optional[str] = None  # "none", "auto", or specific tool name
+    min_p: Optional[float] = Field(None, ge=0.0, le=1.0, description="min_p must be between 0.0 and 1.0")
     
     @validator('messages')
     def validate_messages(cls, v):
@@ -104,24 +105,53 @@ async def create_chat_completion(request: ChatCompletionRequest):
     request_id = hashlib.md5(f"{time.time()}{request.model}".encode()).hexdigest()[:12]
     logger.info(f"ReqID-{request_id}: Received chat request for model '{request.model}'")
 
-    try:
-        await asyncio.to_thread(model_manager.load_model, request.model)
-    except (ValueError, RuntimeError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    model_manager.increment_request_count()
-
-    # Determine streaming mode: 
-    # - If client explicitly sets stream=true/false, use that
-    # - If client doesn't specify stream (None), use config default
+    # Determine streaming mode early for error handling
     if request.stream is not None:
         stream_mode = request.stream
     else:
         # Use config default when stream is not specified
         defaults = _global_config.get('defaults', {})
         stream_mode = defaults.get('stream', False)
-    
+
     logger.debug(f"ReqID-{request_id}: Stream mode: {stream_mode} (request={request.stream}, config_default={_global_config.get('defaults', {}).get('stream', False)})")
+
+    try:
+        await asyncio.to_thread(model_manager.load_model, request.model)
+    except (ValueError, RuntimeError) as e:
+        logger.error(f"ReqID-{request_id}: Model loading error: {e}")
+        error_message = str(e)
+        if stream_mode:
+            # For streaming, return error in stream format
+            async def error_stream():
+                error_chunk = {
+                    "id": f"chatcmpl-{request_id}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": request.model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"content": f"ERROR: {error_message}"},
+                        "finish_reason": "stop"
+                    }]
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(error_stream(), media_type="text/event-stream")
+        else:
+            # For non-streaming, return JSON error
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "message": error_message,
+                        "type": "model_load_error",
+                        "code": "model_unavailable"
+                    }
+                }
+            )
+
+    model_manager.increment_request_count()
 
     if stream_mode:
         # Handle streaming request
@@ -232,7 +262,16 @@ async def create_chat_completion(request: ChatCompletionRequest):
         
         # Handle different response types
         if response.get('type') == 'error':
-            raise HTTPException(status_code=500, detail=response['content'])
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": {
+                        "message": response['content'],
+                        "type": "generation_error",
+                        "code": "internal_error"
+                    }
+                }
+            )
         elif response.get('type') == 'tool_calls':
             # Tool calls response
             message = {
@@ -244,16 +283,16 @@ async def create_chat_completion(request: ChatCompletionRequest):
         else:
             # Standard text response
             message = {
-                "role": "assistant", 
+                "role": "assistant",
                 "content": response['content']
             }
             finish_reason = response.get('finish_reason', 'stop')
-            
+
         response_payload = {
-            "id": f"chatcmpl-{request_id}", 
-            "object": "chat.completion", 
+            "id": f"chatcmpl-{request_id}",
+            "object": "chat.completion",
             "created": int(time.time()),
-            "model": request.model, 
+            "model": request.model,
             "choices": [{
                 "index": 0,
                 "message": message,
@@ -269,7 +308,16 @@ async def create_chat_completion(request: ChatCompletionRequest):
         return JSONResponse(content=response_payload)
     except Exception as e:
         logger.error(f"ReqID-{request_id}: Generation error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "message": str(e),
+                    "type": "generation_error",
+                    "code": "internal_error"
+                }
+            }
+        )
 
 def set_model_manager(manager):
     """Set the global model manager instance"""

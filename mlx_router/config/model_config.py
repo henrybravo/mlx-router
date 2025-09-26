@@ -6,6 +6,7 @@ Supports loading models from local directories and HuggingFace Hub
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -17,6 +18,9 @@ class ModelConfig:
     # No more hard-coded models - configurations loaded dynamically
     MODELS = {}
     _model_directory = None
+    _discovery_cache = None
+    _discovery_cache_mtime = None
+    _discovery_cache_duration = 300  # Cache for 5 minutes
 
     @classmethod
     def set_model_directory(cls, model_directory: str):
@@ -73,13 +77,25 @@ class ModelConfig:
 
     @classmethod
     def discover_local_models(cls) -> Dict[str, Dict[str, Any]]:
-        """Discover models in the configured local directory"""
-        discovered_models = {}
-
+        """Discover models in the configured local directory with caching"""
         if not cls._model_directory or not cls._model_directory.exists():
-            return discovered_models
+            return {}
 
+        # Check if cache is valid
+        current_mtime = cls._get_directory_mtime(cls._model_directory)
+        cache_valid = (
+            cls._discovery_cache is not None and
+            cls._discovery_cache_mtime == current_mtime and
+            time.time() - getattr(cls, '_discovery_cache_time', 0) < cls._discovery_cache_duration
+        )
+
+        if cache_valid:
+            logger.debug("Using cached model discovery results")
+            return cls._discovery_cache
+
+        # Cache miss - perform discovery
         logger.info(f"Scanning model directory: {cls._model_directory}")
+        discovered_models = {}
 
         for item in cls._model_directory.iterdir():
             if not item.is_dir():
@@ -106,7 +122,30 @@ class ModelConfig:
                     discovered_models[actual_model_name] = model_config
                     logger.debug(f"Discovered local model: {actual_model_name} (from {model_name})")
 
+        # Update cache
+        cls._discovery_cache = discovered_models
+        cls._discovery_cache_mtime = current_mtime
+        cls._discovery_cache_time = time.time()
+
         return discovered_models
+
+    @classmethod
+    def _get_directory_mtime(cls, directory: Path) -> float:
+        """Get the latest modification time of the directory and its contents"""
+        try:
+            max_mtime = directory.stat().st_mtime
+
+            # Check all files recursively (but limit depth for performance)
+            for item in directory.rglob('*'):
+                try:
+                    item_mtime = item.stat().st_mtime
+                    max_mtime = max(max_mtime, item_mtime)
+                except OSError:
+                    pass
+
+            return max_mtime
+        except OSError:
+            return 0.0
 
     @classmethod
     def _extract_model_config(cls, model_path: Path) -> Optional[Dict[str, Any]]:

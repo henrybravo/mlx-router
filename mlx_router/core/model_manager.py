@@ -228,14 +228,14 @@ class MLXModelManager:
                             continue
                         # If no local directory configured, assume it's a HF model and continue
 
-                # Check memory compatibility
-                required_memory = ModelConfig.get_config(model_name).get("required_memory_gb", 8)
-                if required_memory > memory_info["total_gb"]:
-                    logger.warning(f"Model {model_name} requires {required_memory}GB but system only has {memory_info['total_gb']:.1f}GB total memory")
+                # Check memory compatibility using consolidated method
+                can_load, _ = ResourceMonitor.can_load_model(model_name, safety_margin=1.0, use_cache=True)
+                if not can_load:
+                    logger.warning(f"Model {model_name} cannot be loaded due to memory constraints")
                     continue
 
                 available.append(model_name)
-                logger.debug(f"Model available: {model_name} (requires {required_memory}GB)")
+                logger.debug(f"Model available: {model_name}")
 
             except Exception as e:
                 logger.warning(f"Model {model_name} validation failed: {e}")
@@ -576,9 +576,9 @@ class MLXModelManager:
             logger.error("Streaming generation attempted without a loaded model.")
             yield "ERROR: No model loaded. Please select a model first."
             return
-        
+
         model_config = ModelConfig.get_config(self.current_model_name)
-        
+
         # Use provided parameters or fall back to model_config, then general defaults
         max_tokens_val = max_tokens if max_tokens is not None else model_config.get("max_tokens", self.default_max_tokens)
         temperature_val = temperature if temperature is not None else model_config.get("temp", 0.7)
@@ -598,37 +598,33 @@ class MLXModelManager:
             if pressure_max_tokens < max_tokens_val:
                 logger.warning(f"Memory pressure '{pressure_level}' detected. Reducing max_tokens from {max_tokens_val} to {pressure_max_tokens}")
                 max_tokens_val = pressure_max_tokens
-        
+
         prompt = self._format_messages(messages, tools)
-        
+
         try:
-            # Run the streaming generator in thread pool executor
+            # Run the streaming generator directly in thread pool executor
             import asyncio
             loop = asyncio.get_running_loop()
-            
+
             def stream_worker():
-                """Worker function to run the streaming generator in executor"""
+                """Worker function to run the streaming generator"""
                 try:
                     token_generator = self._generate_with_mlx(
                         prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=True
                     )
-                    # Collect tokens from the generator
-                    tokens = []
-                    for token in token_generator:
-                        tokens.append(token)
-                    return tokens
+                    return token_generator
                 except Exception as e:
                     logger.error(f"Error in stream worker: {e}", exc_info=True)
                     raise
-            
-            # Execute the streaming generation
+
+            # Get the generator from executor
             future = loop.run_in_executor(self.executor, stream_worker)
-            tokens = await future
-            
-            # Yield tokens one by one
-            for token in tokens:
+            token_generator = await future
+
+            # Yield tokens directly as they become available
+            for token in token_generator:
                 yield token
-                
+
         except Exception as e:
             logger.error(f"Error during streaming generation with {self.current_model_name}: {e}", exc_info=True)
             yield f"ERROR: Streaming generation failed: {str(e)}"

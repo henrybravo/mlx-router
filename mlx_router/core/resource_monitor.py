@@ -68,14 +68,15 @@ class ResourceMonitor:
         return 0  # Unable to calculate
     
     @staticmethod
-    def check_memory_available(model_name, safety_margin=1.5, use_cache=True):
-        """Check if sufficient memory is available for the specified model"""
+    def can_load_model(model_name, safety_margin=1.5, use_cache=True):
+        """Unified method to check if a model can be loaded based on memory availability and pressure"""
         required_gb = ModelConfig.get_config(model_name).get("required_memory_gb", 8)
         info = ResourceMonitor.get_memory_info(use_cache=use_cache)
-        
+        pressure = ResourceMonitor.get_memory_pressure()
+
         # Apply safety margin and consider fragmentation
         effective_required = required_gb * safety_margin
-        
+
         # Reduce fragmentation penalty if we have abundant memory
         fragmentation_penalty = 1.0
         if info["fragmentation_score"] > 50:
@@ -86,15 +87,57 @@ class ResourceMonitor:
             else:
                 fragmentation_penalty = 1.2  # Standard penalty
             logger.debug(f"Memory fragmentation detected ({info['fragmentation_score']:.1f}), applying {fragmentation_penalty}x penalty")
-        
+
         effective_required *= fragmentation_penalty
-        
-        return info["available_gb"] >= effective_required, {
+
+        # Check basic memory availability
+        has_memory = info["available_gb"] >= effective_required
+
+        # Apply pressure-based restrictions
+        can_load = has_memory
+        reason = "Memory sufficient for loading"
+
+        if pressure == "critical":
+            if has_memory:
+                logger.warning(f"Critical pressure but sufficient memory available, allowing load")
+            else:
+                can_load = False
+                reason = f"Critical memory pressure ({info['used_percent']:.1f}%)"
+        elif pressure == "high":
+            if not has_memory:
+                can_load = False
+                reason = f"High memory pressure with insufficient memory (need {effective_required:.1f}GB, available {info['available_gb']:.1f}GB)"
+        elif pressure == "moderate":
+            # Only block if both fragmentation is high AND memory is tight
+            if info["fragmentation_score"] > 70 and not has_memory:
+                can_load = False
+                reason = f"Moderate memory pressure with fragmentation concerns (frag score: {info['fragmentation_score']:.1f})"
+
+        # Consider swap usage as additional pressure indicator
+        swap_threshold = 95 if info["available_gb"] > 50 else 90 if info["available_gb"] > 20 else 50
+        if info["swap_percent"] > swap_threshold:
+            can_load = False
+            reason = f"High swap usage ({info['swap_percent']:.1f}% > {swap_threshold}%) indicates memory pressure"
+
+        # Bypass memory pressure checks if we have abundant available RAM for the model
+        if info["available_gb"] > required_gb * 3:  # 3x safety margin means we can bypass some restrictions
+            can_load = True
+            reason = f"Abundant memory available ({info['available_gb']:.1f}GB)"
+            logger.debug(reason)
+
+        return can_load, {
             'available_gb': info["available_gb"],
             'required_gb': required_gb,
             'effective_required': effective_required,
-            'fragmentation_penalty': fragmentation_penalty
+            'fragmentation_penalty': fragmentation_penalty,
+            'reason': reason
         }
+
+    @staticmethod
+    def check_memory_available(model_name, safety_margin=1.5, use_cache=True):
+        """Check if sufficient memory is available for the specified model (legacy method)"""
+        can_load, details = ResourceMonitor.can_load_model(model_name, safety_margin, use_cache)
+        return can_load, details
     @staticmethod
     def get_memory_pressure():
         """Get memory pressure level for Apple Silicon optimization"""
@@ -133,39 +176,5 @@ class ResourceMonitor:
     @staticmethod
     def should_defer_model_load(model_name):
         """Check if model loading should be deferred due to memory pressure"""
-        pressure = ResourceMonitor.get_memory_pressure()
-        info = ResourceMonitor.get_memory_info(use_cache=False)  # Fresh info for loading decisions
-        required_gb = ModelConfig.get_config(model_name).get("required_memory_gb", 8)
-        
-        # Dynamic swap threshold based on available memory
-        swap_threshold = 95 if info["available_gb"] > 50 else 90 if info["available_gb"] > 20 else 50
-        
-        # Consider swap usage as additional pressure indicator
-        if info["swap_percent"] > swap_threshold:
-            return True, f"High swap usage ({info['swap_percent']:.1f}% > {swap_threshold}%) indicates memory pressure"
-        
-        # Bypass memory pressure checks if we have abundant available RAM for the model
-        if info["available_gb"] > required_gb * 3:  # 3x safety margin means we can bypass some restrictions
-            logger.debug(f"Abundant memory available ({info['available_gb']:.1f}GB > {required_gb * 3}GB), bypassing pressure checks")
-            return False, f"Abundant memory available ({info['available_gb']:.1f}GB)"
-        
-        # Use consolidated memory checking based on pressure level
-        if pressure == "critical":
-            # Even in critical pressure, allow loading if we have enough available memory
-            can_load, mem_info = ResourceMonitor.check_memory_available(model_name, safety_margin=2.0, use_cache=False)
-            if can_load:
-                logger.warning(f"Critical pressure but sufficient memory available, allowing load")
-                return False, f"Critical pressure bypassed due to sufficient available memory"
-            return True, f"Critical memory pressure ({info['used_percent']:.1f}%)"
-        elif pressure == "high":
-            can_load, mem_info = ResourceMonitor.check_memory_available(model_name, safety_margin=1.2, use_cache=False)
-            if not can_load:
-                return True, f"High memory pressure with insufficient memory (need {mem_info['effective_required']:.1f}GB, available {mem_info['available_gb']:.1f}GB)"
-        elif pressure == "moderate":
-            # Only defer if both fragmentation is high AND memory is tight
-            if info["fragmentation_score"] > 70:
-                can_load, mem_info = ResourceMonitor.check_memory_available(model_name, safety_margin=1.5, use_cache=False)
-                if not can_load:
-                    return True, f"Moderate memory pressure with fragmentation concerns (frag score: {info['fragmentation_score']:.1f})"
-        
-        return False, "Memory sufficient for loading"
+        can_load, details = ResourceMonitor.can_load_model(model_name, safety_margin=1.2, use_cache=False)
+        return not can_load, details['reason']
