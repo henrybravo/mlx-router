@@ -1,6 +1,6 @@
 #!/bin/bash
 
-mlx_host="http://localhost:8888"
+mlx_host="http://localhost:8800"
 echo "curl -s ${mlx_host}/health | jq"
 curl -s ${mlx_host}/health | jq
 

@@ -15,7 +15,23 @@ class ResourceMonitor:
     _last_memory_check = 0
     _cached_memory_info = None
     _memory_cache_duration = 2.0
+    _memory_threshold_gb = 80.0  # Default fallback value
+    _swap_critical_percent = 90.0  # Default swap critical threshold
+    _swap_high_percent = 75.0  # Default swap high threshold
     
+    @classmethod
+    def set_memory_threshold_gb(cls, threshold_gb: float):
+        """Set the memory threshold in GB for pressure calculations"""
+        cls._memory_threshold_gb = threshold_gb
+        logger.info(f"Memory threshold set to {threshold_gb}GB")
+
+    @classmethod
+    def set_swap_thresholds(cls, critical_percent: float, high_percent: float):
+        """Set the swap usage thresholds for pressure calculations"""
+        cls._swap_critical_percent = critical_percent
+        cls._swap_high_percent = high_percent
+        logger.info(f"Swap thresholds set to critical={critical_percent}%, high={high_percent}%")
+
     @staticmethod
     def get_memory_info(use_cache=True):
         current_time = time.time()
@@ -83,11 +99,24 @@ class ResourceMonitor:
     def get_memory_pressure():
         """Get memory pressure level for Apple Silicon optimization"""
         info = ResourceMonitor.get_memory_info()
-        if info["used_percent"] > 90 or info["swap_percent"] > 50: return "critical"
-        elif info["used_percent"] > 80 or info["swap_percent"] > 25: return "high"
-        elif info["used_percent"] > 70: return "moderate"
+        available_gb = info["available_gb"]
+        swap_percent = info["swap_percent"]
+        threshold = ResourceMonitor._memory_threshold_gb
+        swap_critical = ResourceMonitor._swap_critical_percent
+        swap_high = ResourceMonitor._swap_high_percent
 
-        return "normal"
+        # Critical: very low available memory OR high swap usage
+        if available_gb < threshold * 0.4 or swap_percent > swap_critical:
+            return "critical"
+        # High: low available memory OR moderate swap usage
+        elif available_gb < threshold * 0.6 or swap_percent > swap_high:
+            return "high"
+        # Moderate: somewhat low available memory
+        elif available_gb < threshold * 0.8:
+            return "moderate"
+        # Normal: sufficient available memory
+        else:
+            return "normal"
     
     @staticmethod
     def get_memory_pressure_max_tokens(model_name, pressure_level):

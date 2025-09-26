@@ -1,9 +1,11 @@
 {
     "defaults": {
-      "max_tokens": 8192,
+      "max_tokens": 16384,
       "timeout": 120,
       "cache_size": 2,
-      "memory_threshold_gb": 90.0,
+      "memory_threshold_gb": 80.0,
+      "swap_critical_percent": 99.0,
+      "swap_high_percent": 90.0,
       "stream": false,
       "model": "mlx-community/Llama-3.3-70B-Instruct-4bit",
       "stream_chunk_size": 32,
@@ -17,8 +19,23 @@
         "debug": true
     },
     "models": {
+        "mlx-community/glm-4-9b-chat-1m-bf16": {
+        "max_tokens": 12288,
+        "temp": 0.7,
+        "top_p": 0.9,
+        "top_k": 40,
+        "min_p": 0.05,
+        "chat_template": "generic",
+        "required_memory_gb": 8,
+        "memory_pressure_max_tokens": {
+                "normal": 12288,
+                "moderate": 8192,
+                "high": 8192,
+                "critical": 4096
+            }
+        },
         "mlx-community/Llama-3.3-70B-Instruct-4bit": {
-            "max_tokens": 8192,
+            "max_tokens": 16384,
             "temp": 0.7,
             "top_p": 0.95,
             "top_k": 50,
@@ -27,14 +44,14 @@
             "required_memory_gb": 40,
             "supports_tools": true,
             "memory_pressure_max_tokens": {
-                "normal": 4096,
-                "moderate": 2048,
-                "high": 1024,
-                "critical": 512
+                "normal": 12288,
+                "moderate": 8192,
+                "high": 8192,
+                "critical": 4096
             }
         },
         "deepseek-ai/deepseek-coder-6.7b-instruct": {
-            "max_tokens": 4096,
+            "max_tokens": 8192,
             "temp": 0.1,
             "top_p": 0.95,
             "top_k": 20,
@@ -43,14 +60,14 @@
             "required_memory_gb": 8,
             "supports_tools": true,
             "memory_pressure_max_tokens": {
-                "normal": 4096,
-                "moderate": 2048,
-                "high": 1024,
-                "critical": 512
+                "normal": 12288,
+                "moderate": 8192,
+                "high": 8192,
+                "critical": 4096
             }
         },
         "mlx-community/Phi-4-reasoning-plus-6bit": {
-            "max_tokens": 4096,
+            "max_tokens": 8192,
             "temp": 0.3,
             "top_p": 0.9,
             "top_k": 25,
@@ -59,14 +76,14 @@
             "required_memory_gb": 12,
             "supports_tools": true,
             "memory_pressure_max_tokens": {
-                "normal": 4096,
-                "moderate": 2048,
-                "high": 1024,
-                "critical": 512
+                "normal": 12288,
+                "moderate": 8192,
+                "high": 8192,
+                "critical": 4096
             }
         },
         "mlx-community/Qwen3-30B-A3B-8bit": {
-            "max_tokens": 8192,
+            "max_tokens": 16384,
             "temp": 0.7,
             "top_p": 0.9,
             "top_k": 40,
@@ -75,10 +92,10 @@
             "required_memory_gb": 18,
             "supports_tools": true,
             "memory_pressure_max_tokens": {
-                "normal": 4096,
-                "moderate": 2048,
-                "high": 1024,
-                "critical": 512
+                "normal": 12288,
+                "moderate": 8192,
+                "high": 8192,
+                "critical": 4096
             }
         }
     }

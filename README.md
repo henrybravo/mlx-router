@@ -357,16 +357,18 @@ Example configuration structure:
 ```json
 {
   "defaults": {
-      "max_tokens": 8192,
-      "timeout": 120,
-      "cache_size": 2,
-      "memory_threshold_gb": 2.0,
-      "stream": false,
-      "enable_function_calling": true,
-      "model": "mlx-community/Llama-3.3-70B-Instruct-4bit",
-      "stream_chunk_size": 32,
-      "warmup_tokens": 5,
-      "model_directory": "/Users/username/models"
+    "max_tokens": 8192,
+    "timeout": 120,
+    "cache_size": 2,
+    "memory_threshold_gb": 2.0,
+    "swap_critical_percent": 95.0,
+    "swap_high_percent": 85.0,
+    "stream": false,
+    "enable_function_calling": true,
+    "model": "mlx-community/Llama-3.3-70B-Instruct-4bit",
+    "stream_chunk_size": 32,
+    "warmup_tokens": 5,
+    "model_directory": "/Users/username/models"
   },
   "server": {
       "ip": "10.3.2.1",
@@ -400,9 +402,142 @@ Example configuration structure:
       "required_memory_gb": 8,
       "supports_tools": true
     }
+    }
+}
+```
+
+### Memory Pressure Management
+
+Memory pressure management is a critical feature in MLX Router that enables efficient operation on Apple Silicon systems with varying amounts of RAM. This system prevents system instability by dynamically adjusting model behavior based on current memory usage.
+
+#### What is Memory Pressure?
+
+Memory pressure refers to the strain placed on a system's RAM and swap resources. In the context of MLX Router, memory pressure monitoring prevents system instability by:
+
+- **Preventing model loading failures** when insufficient RAM is available
+- **Adjusting token limits dynamically** based on current memory usage
+- **Maintaining system responsiveness** during model inference
+- **Optimizing performance** across different Apple Silicon configurations
+
+#### Memory Pressure Levels
+
+MLX Router classifies memory pressure into four levels based on available memory and swap usage:
+
+**Memory-based thresholds** (compared to `memory_threshold_gb`):
+- **`normal`**: Available memory ≥ `memory_threshold_gb` (e.g., ≥80GB)
+- **`moderate`**: Available memory ≥ `memory_threshold_gb * 0.8` (e.g., ≥64GB)
+- **`high`**: Available memory ≥ `memory_threshold_gb * 0.6` (e.g., ≥48GB)
+- **`critical`**: Available memory < `memory_threshold_gb * 0.6` (e.g., <48GB)
+
+**Swap-based thresholds** (configurable via `swap_critical_percent` and `swap_high_percent`):
+- **`critical`**: Swap usage > `swap_critical_percent` (default: 90%)
+- **`high`**: Swap usage > `swap_high_percent` (default: 75%)
+
+Memory pressure is determined by the worst condition (highest pressure level) from both memory and swap thresholds.
+
+#### Memory Monitoring Components
+
+The system monitors several key metrics:
+
+- **Total/Available/Free RAM**: Basic memory statistics
+- **Swap Usage**: Virtual memory utilization
+- **Memory Fragmentation**: Calculated score (0-100) indicating memory efficiency
+- **Safety Margins**: Multipliers applied to required memory calculations
+
+#### Dynamic Token Limits
+
+Each model can have different `max_tokens` limits based on memory pressure:
+
+```json
+"memory_pressure_max_tokens": {
+  "normal": 16384,
+  "moderate": 8192,
+  "high": 4096,
+  "critical": 2048
+}
+```
+
+When memory pressure increases, the system automatically reduces token limits to prevent memory exhaustion during generation.
+
+#### System-Specific Configuration Examples
+
+**16GB RAM Systems (MacBook Air/Pro base models):**
+```json
+{
+  "defaults": {
+    "memory_threshold_gb": 12.0,
+    "swap_critical_percent": 95.0,
+    "swap_high_percent": 85.0
+  },
+  "models": {
+    "mlx-community/Llama-3.2-3B-Instruct-4bit": {
+      "required_memory_gb": 4,
+      "max_tokens": 4096,
+      "memory_pressure_max_tokens": {
+        "normal": 4096,
+        "moderate": 2048,
+        "high": 1024,
+        "critical": 512
+      }
+    }
   }
 }
 ```
+
+**32GB RAM Systems (MacBook Pro, Mac Mini):**
+```json
+{
+  "defaults": {
+    "memory_threshold_gb": 24.0,
+    "swap_critical_percent": 95.0,
+    "swap_high_percent": 85.0
+  },
+  "models": {
+    "mlx-community/Qwen3-30B-A3B-8bit": {
+      "required_memory_gb": 18,
+      "max_tokens": 8192,
+      "memory_pressure_max_tokens": {
+        "normal": 8192,
+        "moderate": 4096,
+        "high": 2048,
+        "critical": 1024
+      }
+    }
+  }
+}
+```
+
+**64GB+ RAM Systems (Mac Studio, high-end Mac Pro):**
+```json
+{
+  "defaults": {
+    "memory_threshold_gb": 48.0,
+    "swap_critical_percent": 99.0,
+    "swap_high_percent": 90.0
+  },
+  "models": {
+    "mlx-community/Llama-3.3-70B-Instruct-4bit": {
+      "required_memory_gb": 35,
+      "max_tokens": 12288,
+      "memory_pressure_max_tokens": {
+        "normal": 12288,
+        "moderate": 8192,
+        "high": 4096,
+        "critical": 2048
+      }
+    }
+  }
+}
+```
+
+#### Best Practices
+
+1. **Monitor Memory Usage**: Use `/health` endpoint to track memory pressure levels
+2. **Choose Appropriate Models**: Don't load models requiring more than 80% of available RAM
+3. **Configure Token Limits**: Set conservative limits for memory-constrained systems
+4. **Watch Fragmentation**: High fragmentation scores (>70) indicate memory inefficiency
+
+For comprehensive memory pressure management details, see the [Memory Pressure Tutorial](https://github.com/henrybravo/mlx-router/blob/main/docs/memory-pressure-tutorial.md).
 
 ### Model Directory Configuration
 

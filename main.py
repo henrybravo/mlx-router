@@ -174,6 +174,19 @@ def main():
                 ModelConfig.set_model_directory(os.environ['MLX_MODEL_DIR'])
                 logger.info(f"Using model directory from environment: {os.environ['MLX_MODEL_DIR']}")
 
+            # Configure memory and swap thresholds from defaults
+            memory_threshold = defaults.get('memory_threshold_gb')
+            swap_critical = defaults.get('swap_critical_percent', 90.0)
+            swap_high = defaults.get('swap_high_percent', 75.0)
+
+            if memory_threshold is not None:
+                from mlx_router.core.resource_monitor import ResourceMonitor
+                ResourceMonitor.set_memory_threshold_gb(memory_threshold)
+                logger.info(f"Configured memory threshold: {memory_threshold}GB")
+
+            ResourceMonitor.set_swap_thresholds(swap_critical, swap_high)
+            logger.info(f"Configured swap thresholds: critical={swap_critical}%, high={swap_high}%")
+
             ModelConfig.load_from_dict(models_config)
 
             # Apply config values only if CLI args weren't explicitly provided
