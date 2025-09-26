@@ -121,6 +121,9 @@ async def create_chat_completion(request: ChatCompletionRequest):
         logger.error(f"ReqID-{request_id}: Model loading error: {e}")
         error_message = str(e)
         if stream_mode:
+            # Get streaming format from config for error response
+            streaming_format = _global_config.get('defaults', {}).get('streaming_format', 'sse')
+
             # For streaming, return error in stream format
             async def error_stream():
                 error_chunk = {
@@ -134,10 +137,22 @@ async def create_chat_completion(request: ChatCompletionRequest):
                         "finish_reason": "stop"
                     }]
                 }
-                yield f"data: {json.dumps(error_chunk)}\n\n"
-                yield "data: [DONE]\n\n"
+                if streaming_format == "json_array":
+                    yield json.dumps([error_chunk])
+                elif streaming_format == "json_lines":
+                    yield f"{json.dumps(error_chunk)}\n"
+                    yield '{"done": true}\n'
+                else:
+                    yield f"data: {json.dumps(error_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
 
-            return StreamingResponse(error_stream(), media_type="text/event-stream")
+            if streaming_format == "json_array":
+                media_type = "application/json"
+            elif streaming_format == "json_lines":
+                media_type = "application/json"
+            else:
+                media_type = "text/plain"
+            return StreamingResponse(error_stream(), media_type=media_type)
         else:
             # For non-streaming, return JSON error
             return JSONResponse(
@@ -154,99 +169,197 @@ async def create_chat_completion(request: ChatCompletionRequest):
     model_manager.increment_request_count()
 
     if stream_mode:
+        # Get streaming format from config
+        streaming_format = _global_config.get('defaults', {}).get('streaming_format', 'sse')
+        logger.debug(f"ReqID-{request_id}: Using streaming format: {streaming_format}")
+
         # Handle streaming request
         async def stream_generator():
-            """Generate Server-Sent Events for streaming response"""
+            """Generate streaming response in configured format"""
             try:
-                # Initial chunk with role
-                first_chunk = {
-                    "id": f"chatcmpl-{request_id}",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": request.model,
-                    "choices": [{
-                        "index": 0,
-                        "delta": {"role": "assistant"},
-                        "finish_reason": None
-                    }]
-                }
-                yield f"data: {json.dumps(first_chunk)}\n\n"
-                
-                # Stream tokens from model manager
-                async for token in model_manager.generate_stream_response(
-                    request.messages,
-                    request.tools,
-                    request.max_tokens,
-                    request.temperature,
-                    request.top_p,
-                    request.top_k,
-                    getattr(request, 'min_p', None)
-                ):
-                    if token.startswith("ERROR:"):
-                        # Handle error in stream
-                        error_chunk = {
-                            "id": f"chatcmpl-{request_id}",
-                            "object": "chat.completion.chunk",
-                            "created": int(time.time()),
-                            "model": request.model,
-                            "choices": [{
-                                "index": 0,
-                                "delta": {"content": f"\n\n{token}"},
-                                "finish_reason": "stop"
-                            }]
+                if streaming_format == "json_array":
+                    # For json_array, collect all content and send as complete response
+                    full_content = []
+                    current_content = ""
+
+                    # Stream tokens from model manager and collect them
+                    async for token in model_manager.generate_stream_response(
+                        request.messages,
+                        request.tools,
+                        request.max_tokens,
+                        request.temperature,
+                        request.top_p,
+                        request.top_k,
+                        getattr(request, 'min_p', None)
+                    ):
+                        if token.startswith("ERROR:"):
+                            # Handle error
+                            full_content = f"\n\n{token}"
+                            break
+                        else:
+                            current_content += token
+
+                    # Send the complete response as a single JSON object (like non-streaming)
+                    response_obj = {
+                        "id": f"chatcmpl-{request_id}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [{
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": current_content
+                            },
+                            "finish_reason": "stop"
+                        }],
+                        "usage": {
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "total_tokens": 0
                         }
-                        yield f"data: {json.dumps(error_chunk)}\n\n"
-                        break
+                    }
+                    yield json.dumps(response_obj)
+
+                else:
+                    # Original streaming logic for sse and json_lines
+                    # Initial chunk with role
+                    first_chunk = {
+                        "id": f"chatcmpl-{request_id}",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"role": "assistant"},
+                            "finish_reason": None
+                        }]
+                    }
+
+                    if streaming_format == "json_lines":
+                        yield f"{json.dumps(first_chunk)}\n"
+                    else:  # sse
+                        yield f"data: {json.dumps(first_chunk)}\n\n"
+
+                    # Stream tokens from model manager
+                    async for token in model_manager.generate_stream_response(
+                        request.messages,
+                        request.tools,
+                        request.max_tokens,
+                        request.temperature,
+                        request.top_p,
+                        request.top_k,
+                        getattr(request, 'min_p', None)
+                    ):
+                        if token.startswith("ERROR:"):
+                            # Handle error in stream
+                            error_chunk = {
+                                "id": f"chatcmpl-{request_id}",
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": request.model,
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {"content": f"\n\n{token}"},
+                                    "finish_reason": "stop"
+                                }]
+                            }
+                            if streaming_format == "json_lines":
+                                yield f"{json.dumps(error_chunk)}\n"
+                            else:
+                                yield f"data: {json.dumps(error_chunk)}\n\n"
+                            break
+                        else:
+                            # Normal token chunk
+                            chunk = {
+                                "id": f"chatcmpl-{request_id}",
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": request.model,
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {"content": token},
+                                    "finish_reason": None
+                                }]
+                            }
+                            if streaming_format == "json_lines":
+                                yield f"{json.dumps(chunk)}\n"
+                            else:
+                                yield f"data: {json.dumps(chunk)}\n\n"
+
+                    # Final chunk
+                    final_chunk = {
+                        "id": f"chatcmpl-{request_id}",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": "stop"
+                        }]
+                    }
+                    if streaming_format == "json_lines":
+                        yield f"{json.dumps(final_chunk)}\n"
+                        yield '{"done": true}\n'  # JSON lines format done marker
                     else:
-                        # Normal token chunk
-                        chunk = {
-                            "id": f"chatcmpl-{request_id}",
-                            "object": "chat.completion.chunk",
-                            "created": int(time.time()),
-                            "model": request.model,
-                            "choices": [{
-                                "index": 0,
-                                "delta": {"content": token},
-                                "finish_reason": None
-                            }]
-                        }
-                        yield f"data: {json.dumps(chunk)}\n\n"
-                
-                # Final chunk
-                final_chunk = {
-                    "id": f"chatcmpl-{request_id}",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": request.model,
-                    "choices": [{
-                        "index": 0,
-                        "delta": {},
-                        "finish_reason": "stop"
-                    }]
-                }
-                yield f"data: {json.dumps(final_chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-                
+                        yield f"data: {json.dumps(final_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+
                 logger.info(f"ReqID-{request_id}: Successfully completed streaming request.")
-                
+
             except Exception as e:
                 logger.error(f"ReqID-{request_id}: Streaming error: {e}", exc_info=True)
-                # Send error in stream format
-                error_chunk = {
-                    "id": f"chatcmpl-{request_id}",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": request.model,
-                    "choices": [{
-                        "index": 0,
-                        "delta": {"content": f"\n\nERROR: {str(e)}"},
-                        "finish_reason": "stop"
-                    }]
-                }
-                yield f"data: {json.dumps(error_chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-        
-        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+                # Send error response
+                if streaming_format == "json_array":
+                    error_response = {
+                        "id": f"chatcmpl-{request_id}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [{
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": f"ERROR: {str(e)}"
+                            },
+                            "finish_reason": "stop"
+                        }],
+                        "usage": {
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "total_tokens": 0
+                        }
+                    }
+                    yield json.dumps(error_response)
+                else:
+                    # Send error in stream format
+                    error_chunk = {
+                        "id": f"chatcmpl-{request_id}",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": f"\n\nERROR: {str(e)}"},
+                            "finish_reason": "stop"
+                        }]
+                    }
+                    if streaming_format == "json_lines":
+                        yield f"{json.dumps(error_chunk)}\n"
+                        yield '{"done": true}\n'
+                    else:
+                        yield f"data: {json.dumps(error_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+
+        # Set media type based on format
+        if streaming_format == "json_array":
+            media_type = "application/json"
+        elif streaming_format == "json_lines":
+            media_type = "application/json"
+        else:  # sse
+            media_type = "text/plain"
+        return StreamingResponse(stream_generator(), media_type=media_type)
 
     try:
         response = await asyncio.to_thread(

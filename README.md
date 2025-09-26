@@ -693,13 +693,34 @@ For comprehensive setup guides and examples, see **[AGENTS.md](AGENTS.md)**
 - **Environment Variable Support** - `MLX_MODEL_DIR` for custom directory configuration
 - **Hot-Swapping** - Switch between local models without server restart
 
-## What's New in v2.1.0
+## What's New in v2.1.3
 
-**🌊 Response Streaming**
+**🌊 Enhanced Response Streaming**
+- **Multiple streaming formats** - Choose between SSE, JSON Lines, or JSON Array formats
+- **Goose/OpenWebUI compatibility** - JSON Array format works with clients that use `response.json()`
 - **Real-time token delivery** - 90%+ reduction in time-to-first-token
-- **Server-Sent Events** - OpenAI-compatible streaming format
+- **Server-Sent Events** - OpenAI-compatible streaming format (default)
 - **Async generators** - Non-blocking streaming with FastAPI
 - **Memory efficient** - Reduced peak memory usage during generation
+
+### Streaming Format Configuration
+
+MLX Router supports three streaming formats for maximum client compatibility:
+
+| Format | Configuration | Best For | Response Type |
+|--------|---------------|----------|---------------|
+| **SSE** (default) | `"streaming_format": "sse"` | curl, Python requests | `data: {json}\n\n...` |
+| **JSON Lines** | `"streaming_format": "json_lines"` | Advanced clients | `{json}\n{json}\n...` |
+| **JSON Array** | `"streaming_format": "json_array"` | Goose, OpenWebUI | `{"object": "chat.completion", "choices": [...]}` |
+
+**For Goose/OpenWebUI compatibility:**
+```json
+{
+  "defaults": {
+    "streaming_format": "json_array"
+  }
+}
+```
 
 **🔧 Function Calling**
 - **OpenAI-compatible** - Full compliance with function calling API
