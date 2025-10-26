@@ -1,5 +1,5 @@
 """Version information for MLX Router"""
 
-VERSION = "2.1.3"
-RELEASE_DATE = "20250926"
+VERSION = "2.2.0"
+RELEASE_DATE = "20251026"
 AUTHOR = "Henry Bravo - info@henrybravo.nl"

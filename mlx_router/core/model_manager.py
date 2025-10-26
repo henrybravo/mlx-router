@@ -38,21 +38,65 @@ if not _jsonschema_available:
     logger.warning("jsonschema not installed. Tool validation will be limited.")
 
 # Pre-compile regex patterns for better performance
+# General cleanup patterns - always applied
 CLEANUP_PATTERNS = [
+    # Llama 3.x format tokens
     (re.compile(r'<\|start_header_id\|>.*?<\|end_header_id\|>', re.DOTALL), ''),
     (re.compile(r'<\|eot_id\|>'), ''),
     (re.compile(r'<\|begin_of_text\|>'), ''),
     (re.compile(r'<\|end_of_text\|>'), ''),
+
+    # ChatML / Qwen format tokens
     (re.compile(r'<\|im_start\|>system\n.*?\n<\|im_end\|>', re.DOTALL), ''),
     (re.compile(r'<\|im_start\|>user\n.*?\n<\|im_end\|>', re.DOTALL), ''),
     (re.compile(r'<\|im_start\|>assistant\n'), ''),
     (re.compile(r'<\|im_end\|>'), ''),
+
+    # Phi-4 format tokens
     (re.compile(r'<\|user\|>'), ''),
-    (re.compile(r'<\|end\|>'), ''),
     (re.compile(r'<\|assistant\|>'), ''),
-    (re.compile(r'^\s*<\|.*?\|>\s*\n?', re.MULTILINE), ''),
+    (re.compile(r'<\|system\|>'), ''),
+    (re.compile(r'<\|end\|>'), ''),
+
+    # Role prefixes
     (re.compile(r'^(Assistant|User|System):\s*', re.MULTILINE), ''),
 ]
+
+# GPT-OSS specific patterns - only applied when reasoning_response is "disable"
+GPT_OSS_CLEANUP_PATTERNS = [
+    (re.compile(r'<\|start\|>'), ''),
+    (re.compile(r'<\|channel\|>[^\n]*'), ''),  # Remove channel directives
+    (re.compile(r'<\|message\|>'), ''),
+    (re.compile(r'<\|end\|>'), ''),
+
+    # Catch-all for any remaining special tokens
+    (re.compile(r'<\|[a-zA-Z0-9_]+\|>'), ''),
+    (re.compile(r'^\s*<\|.*?\|>\s*\n?', re.MULTILINE), ''),
+]
+
+# Pattern for detecting reasoning/meta-commentary sections in responses
+REASONING_PATTERNS = [
+    # Qwen3 thinking blocks
+    (re.compile(r'<think>.*?</think>', re.DOTALL | re.IGNORECASE), ''),
+
+    # GPT-OSS style reasoning blocks (legacy - kept for backward compatibility)
+    (re.compile(r'We have to produce.*?Thus answer\.', re.DOTALL | re.IGNORECASE), ''),
+    (re.compile(r'We (?:must|can|need to|should).*?(?:Thus|Therefore|So)[,:]?\s*(?:answer|respond)', re.DOTALL | re.IGNORECASE), ''),
+
+    # Generic meta-commentary patterns
+    (re.compile(r'(?:^|\n)\s*(?:The user asks?|We need to respond|Provide an answer).*?(?:\n\n|Thus answer)', re.DOTALL | re.IGNORECASE), ''),
+]
+
+# GPT-OSS Harmony format channel extraction
+# Pattern to extract only the final answer channel content
+GPT_OSS_FINAL_PATTERN = re.compile(
+    r'<\|start\|>assistant<\|channel\|>final<\|message\|>(.*?)(?:<\|end\|>|$)',
+    re.DOTALL | re.IGNORECASE
+)
+
+# Pattern to detect if response contains harmony format channels
+GPT_OSS_CHANNEL_PATTERN = re.compile(r'<\|channel\|>', re.IGNORECASE)
+
 NEWLINE_PATTERN = re.compile(r'\n{3,}')
 
 # Data-driven chat template configuration
@@ -135,6 +179,14 @@ If you need to use a tool, respond ONLY with the tool_call. If no tool is needed
         'role_format': '<|im_start|>{role}\n{content}<|im_end|>\n',
         'assistant_start': '<|im_start|>assistant\n',
         'system_default': None
+    },
+    'gpt-oss': {
+        'prefix': '<|startoftext|>',
+        'use_tokenizer_template': True,  # Flag to use tokenizer.apply_chat_template if available
+        'role_format': '<|start|>{role}<|message|>\n{content}\n<|end|>',
+        'assistant_start': '<|start|>assistant<|message|>\n',
+        'system_default': None,
+        'eos_token': '<|return|>'
     }
 }
 
@@ -344,10 +396,31 @@ class MLXModelManager:
         """Format messages with model-specific chat templates using data-driven approach"""
         if not messages:
             return self._get_default_prompt()
-        
+
         chat_template_name = ModelConfig.get_chat_template(self.current_model_name)
         template = CHAT_TEMPLATES.get(chat_template_name, CHAT_TEMPLATES['generic'])
-        
+
+        # For models with native tokenizer chat templates (like gpt-oss), use them if available
+        if template.get('use_tokenizer_template') and self.current_tokenizer and hasattr(self.current_tokenizer, 'apply_chat_template'):
+            try:
+                # Convert messages to dict format for tokenizer
+                formatted_messages = []
+                for msg in messages:
+                    role = self._get_msg_attr(msg, "role", "user")
+                    content = self._get_msg_attr(msg, "content", "")
+                    formatted_messages.append({"role": role, "content": content})
+
+                # Use tokenizer's native chat template
+                prompt = self.current_tokenizer.apply_chat_template(
+                    formatted_messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+                logger.debug(f"Using native tokenizer chat template for {chat_template_name}")
+                return prompt
+            except Exception as e:
+                logger.warning(f"Failed to use native tokenizer chat template: {e}. Falling back to manual formatting.")
+
         # Start with prefix
         prompt = template.get('prefix', '')
         
@@ -409,12 +482,42 @@ class MLXModelManager:
         """Sanitize model response for proper rendering, preserving meaningful newlines."""
         if not response_text:
             return ""
-        
-        # Use pre-compiled patterns for better performance
+
         cleaned = response_text
+
+        # Get model config to check reasoning_response setting
+        model_config = ModelConfig.get_config(self.current_model_name) if self.current_model_name else {}
+        reasoning_enabled = model_config.get("reasoning_response", "disable") == "enable"
+
+        # Special handling for GPT-OSS Harmony format
+        if GPT_OSS_CHANNEL_PATTERN.search(cleaned):
+            if not reasoning_enabled:
+                # Extract only final answer channel (default behavior)
+                final_match = GPT_OSS_FINAL_PATTERN.search(cleaned)
+                if final_match:
+                    cleaned = final_match.group(1).strip()
+                    logger.debug("Extracted GPT-OSS final answer channel content (reasoning disabled)")
+                else:
+                    logger.warning("GPT-OSS response contains channels but no 'final' channel found")
+            else:
+                # Keep full response with reasoning, just clean special tokens
+                logger.debug("Keeping full GPT-OSS response with reasoning (reasoning enabled)")
+
+        # Remove Qwen3 and other reasoning patterns (only if reasoning is disabled)
+        if not reasoning_enabled:
+            for pattern, replacement in REASONING_PATTERNS:
+                cleaned = pattern.sub(replacement, cleaned)
+
+        # Apply general cleanup patterns (always apply)
         for pattern, replacement in CLEANUP_PATTERNS:
             cleaned = pattern.sub(replacement, cleaned)
-        
+
+        # Apply GPT-OSS specific patterns only when reasoning is disabled
+        if not reasoning_enabled:
+            for pattern, replacement in GPT_OSS_CLEANUP_PATTERNS:
+                cleaned = pattern.sub(replacement, cleaned)
+
+        # Process lines to normalize whitespace
         lines = cleaned.split('\n')
         processed_lines = []
         for line in lines:
@@ -423,15 +526,28 @@ class MLXModelManager:
                 processed_lines.append(stripped_line)
             elif processed_lines and processed_lines[-1]:
                 processed_lines.append("")
-        
+
         result = '\n'.join(processed_lines).strip()
         result = NEWLINE_PATTERN.sub('\n\n', result)
 
         if not result or len(result.strip()) < 1:
             logger.warning("Response was empty or very short after sanitization.")
             return "I apologize, but I encountered an issue generating a response. Please try again."
-        
+
         return result
+
+    def _filter_special_token(self, token: str) -> str:
+        """Filter individual token for streaming - removes special tokens in real-time"""
+        # Quick check: if token doesn't contain special characters, return as-is
+        if '<' not in token and '|' not in token:
+            return token
+
+        # Apply token-level cleanup patterns (only the simple ones that don't need context)
+        filtered = token
+        for pattern, replacement in CLEANUP_PATTERNS:
+            filtered = pattern.sub(replacement, filtered)
+
+        return filtered
 
     def _parse_tool_calls(self, text: str, tools: List[dict]) -> Optional[Dict[str, Any]]:
         """Parse model output for tool calls and validate against tool schemas."""
@@ -676,11 +792,78 @@ class MLXModelManager:
             raise
 
     def _stream_tokens(self, response_generator, start_time):
-        """Generator helper for streaming tokens"""
+        """Generator helper for streaming tokens with buffered filtering"""
         token_count = 0
+        buffer = ""
+        buffer_size_limit = 20  # Hold back tokens to enable pattern matching (reduced for better streaming)
+
         for token in response_generator:
             token_count += 1
-            yield token
+            buffer += token
+
+            # When buffer gets large enough, try to yield safe tokens
+            if len(buffer) > buffer_size_limit:
+                # Check if buffer starts with a special token pattern
+                # Apply all cleanup patterns to detect special tokens
+                test_buffer = buffer
+                for pattern, _ in CLEANUP_PATTERNS:
+                    test_buffer = pattern.sub('', test_buffer)
+
+                # If patterns removed content from start, buffer contains special tokens
+                # Find safe content to yield (content before potential special tokens)
+                if '<' in buffer or '|' in buffer:
+                    # Find position of potential special token start
+                    special_pos = buffer.find('<')
+                    if special_pos > 10:  # Safe content before special token
+                        # Yield the safe part
+                        safe_part = buffer[:special_pos]
+                        yield safe_part
+                        buffer = buffer[special_pos:]
+                    # Otherwise keep buffering
+                else:
+                    # No special characters, yield half the buffer (keep rest for safety)
+                    yield_pos = len(buffer) // 2
+                    yield buffer[:yield_pos]
+                    buffer = buffer[yield_pos:]
+
+        # Process remaining buffer at the end
+        if buffer:
+            # Apply full sanitization to remaining buffer
+            cleaned = buffer
+
+            # Get model config to check reasoning_response setting
+            model_config = ModelConfig.get_config(self.current_model_name) if self.current_model_name else {}
+            reasoning_enabled = model_config.get("reasoning_response", "disable") == "enable"
+
+            # Special handling for GPT-OSS Harmony format
+            if GPT_OSS_CHANNEL_PATTERN.search(cleaned):
+                if not reasoning_enabled:
+                    # Extract only final answer channel (default behavior)
+                    final_match = GPT_OSS_FINAL_PATTERN.search(cleaned)
+                    if final_match:
+                        cleaned = final_match.group(1).strip()
+                        logger.debug("Extracted GPT-OSS final answer channel in streaming (reasoning disabled)")
+                else:
+                    # Keep full response with reasoning
+                    logger.debug("Keeping full GPT-OSS response in streaming (reasoning enabled)")
+
+            # Apply reasoning and cleanup patterns
+            if not reasoning_enabled:
+                for pattern, replacement in REASONING_PATTERNS:
+                    cleaned = pattern.sub(replacement, cleaned)
+
+            # Apply general cleanup patterns (always)
+            for pattern, replacement in CLEANUP_PATTERNS:
+                cleaned = pattern.sub(replacement, cleaned)
+
+            # Apply GPT-OSS specific patterns only when reasoning is disabled
+            if not reasoning_enabled:
+                for pattern, replacement in GPT_OSS_CLEANUP_PATTERNS:
+                    cleaned = pattern.sub(replacement, cleaned)
+
+            if cleaned.strip():
+                yield cleaned
+
         # Log performance after streaming completes
         gen_time = time.time() - start_time
         logger.info(f"Streamed ~{token_count} tokens in {gen_time:.2f}s using {self.current_model_name}")
