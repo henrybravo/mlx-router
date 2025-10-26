@@ -3,23 +3,39 @@
       "max_tokens": 16384,
       "timeout": 120,
       "cache_size": 2,
-      "memory_threshold_gb": 20.0,
+      "memory_threshold_gb": 5.0,
       "swap_critical_percent": 99.0,
       "swap_high_percent": 90.0,
       "stream": true,
       "stream_chunk_size": 32,
-      "streaming_format": "json_array",
+      "streaming_format": "sse",
       "warmup_tokens": 5,
       "enable_function_calling": true,
-      "model": "mlx-community/Qwen3-30B-A3B-8bit",       
+      "model": "mlx-community/gpt-oss-120b-MXFP4-Q8",       
       "model_directory": "/Users/username/models"
     },
     "server": {
         "ip": "0.0.0.0",
         "port": 8800,
-        "debug": true
+        "debug": false
     },
     "models": {
+        "mlx-community/gpt-oss-120b-MXFP4-Q8": {
+            "max_tokens": 16384,
+            "temp": 0.7,
+            "top_p": 0.9,
+            "top_k": 40,
+            "min_p": 0.05,
+            "chat_template": "gpt-oss",
+            "reasoning_response": "enable",
+            "required_memory_gb": 8,
+            "memory_pressure_max_tokens": {
+                    "normal": 16384,
+                    "moderate": 16384,
+                    "high": 16384,
+                    "critical": 8192
+            }
+        },
         "mlx-community/Llama-3.3-70B-Instruct-4bit": {
             "max_tokens": 16384,
             "temp": 0.7,
