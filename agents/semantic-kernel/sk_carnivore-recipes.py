@@ -17,11 +17,12 @@ I'm a carnivore in search of new recipes. I love grilling!
 Can you give me a list of {{ $num_recipes }} breakfast recipes that are carnivore-friendly using {{ $meat_type }}?
 """
 
-mlx_server="http://localhost:8888/v1"
-mlx_model="mlx-community/Llama-3.2-3B-Instruct-4bit"
+mlx_server="http://localhost:8800/v1"
+# mlx_model="mlx-community/Llama-3.2-3B-Instruct-4bit"
 # mlx_model="deepseek-ai/deepseek-coder-6.7b-instruct"
 # mlx_model="mlx-community/Phi-4-reasoning-plus-6bit"
 #mlx_model="mlx-community/Qwen3-30B-A3B-8bit"
+mlx_model = "mlx-community/gpt-oss-120b-MXFP4-Q8"
 
 # Define the service ID
 service_id = "openai_chat"
@@ -76,7 +77,7 @@ async def get_recipes(num_recipes, meat_type):
         output = str(result)
         print("Carnivore-Friendly Breakfast Recipes:")
         print(output)
-        with open("recipes.txt", "a") as f:
+        with open("recipes.md", "a") as f:
             f.write(output)
     except Exception as e:
         print(f"An error occurred: {e}")

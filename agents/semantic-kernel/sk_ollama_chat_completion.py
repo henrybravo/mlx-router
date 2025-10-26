@@ -10,7 +10,6 @@ from openai import AsyncOpenAI
 
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from semantic_kernel.contents.chat_history import ChatHistory
-from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.kernel import Kernel
 
 # This concept sample shows how to use the OpenAI connector with
@@ -34,7 +33,8 @@ flowery prose.
 # local_model="mlx-community/Llama-3.2-3B-Instruct-4bit"
 # local_model="deepseek-ai/deepseek-coder-6.7b-instruct"
 #local_model="mlx-community/Phi-4-reasoning-plus-6bit"
-local_model="mlx-community/Qwen3-30B-A3B-8bit"
+# local_model="mlx-community/Qwen3-30B-A3B-8bit"
+local_model = "mlx-community/gpt-oss-120b-MXFP4-Q8"
 
 kernel = Kernel()
 
@@ -46,18 +46,12 @@ openAIClient: AsyncOpenAI = AsyncOpenAI(
 )
 kernel.add_service(OpenAIChatCompletion(service_id=service_id, ai_model_id=local_model, async_client=openAIClient))
 
+chat_completion = kernel.get_service(service_id)
+
 settings = kernel.get_prompt_execution_settings_from_service_id(service_id)
 settings.max_tokens = 2000
 settings.temperature = 0.7
 settings.top_p = 0.8
-
-chat_function = kernel.add_function(
-    plugin_name="ChatBot",
-    function_name="Chat",
-    prompt="{{$chat_history}}{{$user_input}}",
-    template_format="semantic-kernel",
-    prompt_execution_settings=settings,
-)
 
 chat_history = ChatHistory(system_message=system_message)
 chat_history.add_user_message("Hi there, who are you?")
@@ -78,10 +72,13 @@ async def chat() -> bool:
         print("\n\nExiting chat...")
         return False
 
-    answer = await kernel.invoke(chat_function, KernelArguments(user_input=user_input, chat_history=chat_history))
+    if not user_input.strip():
+        return True
+
     chat_history.add_user_message(user_input)
-    chat_history.add_assistant_message(str(answer))
-    print(f"Mosscap:> {answer}")
+    response = await chat_completion.get_chat_message_contents(chat_history=chat_history, settings=settings)
+    chat_history.add_assistant_message(response[0].content)
+    print(f"Mosscap:> {response[0].content}")
     return True
 
 

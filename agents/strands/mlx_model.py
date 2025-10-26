@@ -1,4 +1,38 @@
-# mlx_model.py
+"""
+MLX-Router Model Provider for the Strands Agent Framework
+========================================================
+
+Strands includes built-in providers for services such as OpenAI and Anthropic,
+but it does not have a native integration for MLX-Router.  Although MLX-Router
+exposes an OpenAI-compatible HTTP API, its request/response format—especially
+streaming via Server-Sent Events—differs enough to require a thin wrapper.
+
+This module supplies that wrapper:
+
+* MLXModel - a concrete implementation of ``strands.model.Model``.
+* Implements the full Strands Model interface (stream, structured_output,
+  chat, etc.) while translating calls to the MLX-Router API.
+* Handles MLX-Router-specific quirks:
+  - Server-Sent Events (SSE) streaming of token deltas.
+  - Message payload formatting that deviates from the vanilla OpenAI schema.
+  - Optional parameters unique to MLX-Router (e.g., temperature, max_tokens).
+
+Result
+------
+You can use MLX-Router with Strands without modifying the rest of your agent
+code, gaining self-hosted inference while keeping the familiar Strands API.
+
+Example
+-------
+from strands import Agent
+from mlx_provider import MLXModel
+
+model = MLXModel(endpoint="http://localhost:8080/v1")
+agent = Agent(model=model)
+
+response = await agent.chat("Explain quantum tunneling in simple terms.")
+"""
+
 import json
 import logging
 import httpx
@@ -313,16 +347,25 @@ class MLXModel(Model):
 # Usage example
 def create_mlx_agent():
     """Create an agent using the MLX model provider."""
-    from agents.strands.mlx_model import Agent
-    from strands_tools import calculator
+    from strands import Agent
+    # from strands_tools import calculator  # Not used in this example
     
     # Initialize MLX model
+    # mlx_model = MLXModel(
+    #     base_url="http://host.docker.internal:8888/v1",
+    #     model_id="mlx-community/Qwen3-30B-A3B-8bit",
+    #     api_key="strands-key",
+    #     params={
+    #         "max_tokens": 1000,
+    #         "temperature": 0.7,
+    #     }
+    # )
     mlx_model = MLXModel(
-        base_url="http://host.docker.internal:8888/v1",
-        model_id="mlx-community/Qwen3-30B-A3B-8bit",
+        base_url="http://localhost:8800/v1",
+        model_id="mlx-community/gpt-oss-120b-MXFP4-Q8",
         api_key="strands-key",
         params={
-            "max_tokens": 1000,
+            "max_tokens": 16384,
             "temperature": 0.7,
         }
     )

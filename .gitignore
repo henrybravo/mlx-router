@@ -3,8 +3,10 @@
 !AGENTS.md
 !INSTALL_TEST.md
 !CHANGELOG.md
+!recipes.md
 logs/
 dev_tests/
+my_config.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

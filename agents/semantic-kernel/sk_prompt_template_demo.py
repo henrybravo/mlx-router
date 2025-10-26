@@ -22,9 +22,10 @@ service_id = "openai_chat"
 kernel = Kernel()
 
 # Configure the AsyncOpenAI client for the local model
-mlx_server = "http://localhost:8888/v1"
+mlx_server = "http://localhost:8800/v1"
 #mlx_model = "mlx-community/Llama-3.2-3B-Instruct-4bit"
-mlx_model = "mlx-community/Llama-3.3-70B-Instruct-6bit"
+# mlx_model = "mlx-community/Llama-3.3-70B-Instruct-6bit"
+mlx_model = "mlx-community/gpt-oss-120b-MXFP4-Q8"
 openAIClient = AsyncOpenAI(
     api_key="sk-key",  # Use a placeholder API key for local models
     base_url=mlx_server,  # Local endpoint for your model server
