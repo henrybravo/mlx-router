@@ -536,9 +536,24 @@ class MLXModelManager:
                         'finish_reason': 'tool_calls'
                     }
             
-            # Standard text response
+            # Standard text or vision response
+            if self.is_vision_model:
+                raw_response = self._generate_with_vlm(prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=False)
+            else:
+                raw_response = self._generate_with_mlx(prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, False)
+            
+            if tools:
+                tool_calls = self._parse_tool_calls(raw_response, tools)
+                if tool_calls:
+                    return {
+                        'type': 'tool_calls',
+                        'content': None,
+                        'tool_calls': tool_calls['tool_calls'],
+                        'finish_reason': 'tool_calls'
+                    }
+            
             return {
-                'type': 'text', 
+                'type': 'text',
                 'content': self._sanitize_response(raw_response),
                 'finish_reason': 'stop'
             }
@@ -597,10 +612,17 @@ class MLXModelManager:
             def stream_worker():
                 """Worker function to run the streaming generator"""
                 try:
-                    token_generator = self._generate_with_mlx(
-                        prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=True
-                    )
-                    return token_generator
+                    if self.is_vision_model:
+                        token_generator = self._generate_with_vlm(
+                            prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=False
+                        )
+                        for token in token_generator:
+                            yield token
+                    else:
+                        token_generator = self._generate_with_mlx(
+                            prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=True
+                        )
+                        return token_generator
                 except Exception as e:
                     logger.error(f"Error in stream worker: {e}", exc_info=True)
                     raise
@@ -661,6 +683,43 @@ class MLXModelManager:
                 
         except Exception as e:
             logger.error(f"MLX generation core error with {self.current_model_name}: {e}", exc_info=True)
+            raise
+
+    def _generate_with_vlm(self, prompt, max_tokens, temperature, top_p, top_k, min_p, stream=False):
+        """Core MLX-VLM generation logic - can return generator for streaming or full text"""
+        if not _vision_available:
+            logger.error("Vision model support not available. Install mlx-vlm>=0.3.9")
+            raise RuntimeError("Vision model support requires mlx-vlm to be installed")
+
+        if not self.current_model:
+            logger.error("Vision generation attempted without a loaded model.")
+            raise RuntimeError("No model loaded.")
+
+        try:
+            sampler_args = {"temp": temperature, "top_p": top_p, "min_tokens_to_keep": 1}
+            if min_p is not None and min_p > 0.0:
+                sampler_args["min_p"] = min_p
+            if top_k is not None and top_k > 0:
+                sampler_args["top_k"] = top_k
+
+            start_time = time.time()
+            response = generate_vision(
+                self.current_model,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                **sampler_args,
+                verbose=False
+            )
+
+            if stream:
+                return response
+            else:
+                gen_time = time.time() - start_time
+                logger.info(f"Generated vision response in {gen_time:.2f}s using {self.current_model_name}")
+                return response
+
+        except Exception as e:
+            logger.error(f"MLX-VLM generation error with {self.current_model_name}: {e}", exc_info=True)
             raise
 
     def _stream_tokens(self, response_generator, start_time):
