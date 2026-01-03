@@ -95,7 +95,7 @@ class ResourceMonitor:
 
         # Apply pressure-based restrictions
         can_load = has_memory
-        reason = "Memory sufficient for loading"
+        reason = "Memory sufficient for loading" if has_memory else f"Insufficient memory (need {effective_required:.1f}GB, available {info['available_gb']:.1f}GB)"
 
         if pressure == "critical":
             if has_memory:
