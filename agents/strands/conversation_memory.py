@@ -2,7 +2,6 @@
 # mlx_model.py provides the custom MLXModel class for Strands integration with MLX Router
 from mlx_model import MLXModel
 import asyncio
-from mlx_model import MLXModel
 from strands import Agent
 
 async def main():
