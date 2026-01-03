@@ -1,8 +1,8 @@
 {
     "mlx-community/Llama-3.3-70B-Instruct-8bit": {
         "max_tokens": 4096,
-        "temp": 0.9,
-        "top_p": 0.8,
+        "temp": 0.7,
+        "top_p": 0.9,
         "top_k": 40,
         "min_p": 0.05,
         "chat_template": "generic",

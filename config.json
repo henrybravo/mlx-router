@@ -28,7 +28,7 @@
             "top_k": 40,
             "min_p": 0.05,
             "chat_template": "gpt-oss",
-            "reasoning_response": "enable",
+            "reasoning_response": "disable",
             "required_memory_gb": 8,
             "memory_pressure_max_tokens": {
                     "normal": 16384,
