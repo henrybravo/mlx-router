@@ -20,6 +20,8 @@ from mlx_router.core.resource_monitor import ResourceMonitor
 from mlx_router.core.content import MessageContent, normalize_message_content
 from mlx_router.__version__ import VERSION
 
+VISION_ENABLED_MODELS = []
+
 logger = logging.getLogger(__name__)
 
 # Global config store for defaults
@@ -62,7 +64,7 @@ class ChatCompletionRequest(BaseModel):
                 raise ValueError("message role must be 'system', 'user', or 'assistant'")
         return v
 
-def normalize_request_messages(messages: List[ChatMessage]) -> List[Dict[str, str]]:
+def normalize_request_messages(messages: List[ChatMessage], model_id: str) -> List[Dict[str, str]]:
     """
     Normalize all message contents from array/string format to string format.
 
@@ -71,14 +73,17 @@ def normalize_request_messages(messages: List[ChatMessage]) -> List[Dict[str, st
 
     Args:
         messages: List of ChatMessage objects with content as str or list[ContentPart]
+        model_id: Model ID for capability detection
 
     Returns:
         List of dict with role and normalized string content
     """
     normalized = []
+    support_vision = any(model in VISION_ENABLED_MODELS for model in [model_id])
+
     for msg in messages:
         try:
-            content_str = normalize_message_content(msg.content)
+            content_str = normalize_message_content(msg.content, support_vision=support_vision)
             normalized.append({"role": msg.role, "content": content_str})
         except (ValueError, TypeError) as e:
             raise HTTPException(
@@ -131,7 +136,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
     request_id = hashlib.md5(f"{time.time()}{request.model}".encode()).hexdigest()[:12]
     logger.info(f"ReqID-{request_id}: Received chat request for model '{request.model}'")
 
-    normalized_messages = normalize_request_messages(request.messages)
+    normalized_messages = normalize_request_messages(request.messages, request.model)
 
     # Determine streaming mode early for error handling
     if request.stream is not None:

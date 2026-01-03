@@ -227,6 +227,39 @@ class TestContentNormalization:
         expected = "System instruction: You are helpful.\nUser question: What is AI?"
         self.assert_equal(result, expected, "Complex Pydantic model list normalized correctly")
 
+    def test_tc13_image_url_content_with_vision_disabled(self):
+        """TC13: Image URL content with vision disabled raises error"""
+        print("\n🧪 TC13: Image URL Content (Vision Disabled)")
+        print("=" * 50)
+
+        # Image content should raise ValueError when support_vision=False
+        content = [
+            TextContentPart(text="What is in this image?"),
+            ImageUrlContentPart(image_url=ImageUrlDetail(url="http://example.com/image.png"))
+        ]
+
+        self.assert_raises(
+            ValueError,
+            lambda: normalize_message_content(content, support_vision=False),
+            "Image content rejected with ValueError when vision disabled"
+        )
+
+    def test_tc14_image_url_content_with_vision_enabled(self):
+        """TC14: Image URL content with vision enabled logs warning"""
+        print("\n🧪 TC14: Image URL Content (Vision Enabled)")
+        print("=" * 50)
+
+        # Image content should log warning when support_vision=True
+        content = [
+            TextContentPart(text="What is in this image?"),
+            ImageUrlContentPart(image_url=ImageUrlDetail(url="http://example.com/image.png"))
+        ]
+
+        result = normalize_message_content(content, support_vision=True)
+        # Should return only text parts
+        expected = "What is in this image?"
+        self.assert_equal(result, expected, "Image content filtered out, text returned")
+
     def run_all_tests(self):
         """Run all test cases and report results"""
         print("\n" + "=" * 60)
@@ -245,6 +278,8 @@ class TestContentNormalization:
         self.test_tc10_empty_text_parts()
         self.test_tc11_unknown_content_type()
         self.test_tc12_complex_multimodal_structure()
+        self.test_tc13_image_url_content_with_vision_disabled()
+        self.test_tc14_image_url_content_with_vision_enabled()
 
         print("\n" + "=" * 60)
         print(f"📊 Test Results: {self.passed} passed, {self.failed} failed")
