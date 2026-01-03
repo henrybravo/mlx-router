@@ -135,7 +135,8 @@ log_info "Installing Python dependencies..."
 if [[ "$USE_UV" == true ]]; then
     log_info "Installing dependencies with uv..."
     # Use global uv with local cache to avoid permission issues
-    if ! uv --cache-dir "$INSTALL_DIR/.cache" pip install --python "$INSTALL_DIR/venv/bin/python" -r "$INSTALL_DIR/requirements.txt"; then
+    # Allow pre-releases for mlx-lm 0.30.0 which depends on transformers==5.0.0rc1
+    if ! uv --cache-dir "$INSTALL_DIR/.cache" pip install --prerelease=allow --python "$INSTALL_DIR/venv/bin/python" -r "$INSTALL_DIR/requirements.txt"; then
         log_error "uv installation failed, falling back to pip"
         USE_UV=false
     fi

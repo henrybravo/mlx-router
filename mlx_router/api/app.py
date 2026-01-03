@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, validator
 
 from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.resource_monitor import ResourceMonitor
+from mlx_router.core.content import MessageContent, normalize_message_content
 from mlx_router.__version__ import VERSION
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ app.add_middleware(
 # Pydantic Models for Request/Response Validation
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: MessageContent
 
 class ChatCompletionRequest(BaseModel):
     model: str
@@ -60,6 +61,31 @@ class ChatCompletionRequest(BaseModel):
             if msg.role not in ['system', 'user', 'assistant']:
                 raise ValueError("message role must be 'system', 'user', or 'assistant'")
         return v
+
+def normalize_request_messages(messages: List[ChatMessage]) -> List[Dict[str, str]]:
+    """
+    Normalize all message contents from array/string format to string format.
+
+    This ensures backward compatibility with existing code while supporting new
+    OpenAI multimodal array format.
+
+    Args:
+        messages: List of ChatMessage objects with content as str or list[ContentPart]
+
+    Returns:
+        List of dict with role and normalized string content
+    """
+    normalized = []
+    for msg in messages:
+        try:
+            content_str = normalize_message_content(msg.content)
+            normalized.append({"role": msg.role, "content": content_str})
+        except (ValueError, TypeError) as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid message content: {str(e)}"
+            )
+    return normalized
 
 model_manager = None
 
@@ -104,6 +130,8 @@ async def create_chat_completion(request: ChatCompletionRequest):
     """Generates a model response for the given chat conversation."""
     request_id = hashlib.md5(f"{time.time()}{request.model}".encode()).hexdigest()[:12]
     logger.info(f"ReqID-{request_id}: Received chat request for model '{request.model}'")
+
+    normalized_messages = normalize_request_messages(request.messages)
 
     # Determine streaming mode early for error handling
     if request.stream is not None:
@@ -184,7 +212,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
 
                     # Stream tokens from model manager and collect them
                     async for token in model_manager.generate_stream_response(
-                        request.messages,
+                        normalized_messages,
                         request.tools,
                         request.max_tokens,
                         request.temperature,
@@ -243,7 +271,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
 
                     # Stream tokens from model manager
                     async for token in model_manager.generate_stream_response(
-                        request.messages,
+                        normalized_messages,
                         request.tools,
                         request.max_tokens,
                         request.temperature,
@@ -364,7 +392,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
     try:
         response = await asyncio.to_thread(
             model_manager.generate_response,
-            request.messages,
+            normalized_messages,
             request.tools,
             request.max_tokens,
             request.temperature,
