@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, validator
 from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.resource_monitor import ResourceMonitor
 from mlx_router.core.content import MessageContent, normalize_message_content
+from mlx_router.core.manager import MLXModelManager
 from mlx_router.__version__ import VERSION
 
 VISION_ENABLED_MODELS = [
