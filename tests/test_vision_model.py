@@ -9,7 +9,7 @@ This script demonstrates how to:
 4. Show how to add a config.json entry for this model
 
 Usage:
-    python tests/test_vision_model.py --image-file path/to/image.png
+    python tests/test_vision_model_corrected.py --image-file path/to/image.png
 
 Config.json example for Chandra-8bit:
 {
@@ -44,7 +44,7 @@ import requests
 from PIL import Image as PILImage
 from PIL import ImageDraw, ImageFont
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,21 +56,21 @@ DEFAULT_API_KEY = "dummy-key"
 def encode_image_to_base64(image_path):
     """Encode an image file to base64 data URI format"""
     try:
-        with open(image_path, 'rb') as f:
+        with open(image_path, "rb") as f:
             image_data = f.read()
-            base64_data = base64.b64encode(image_data).decode('utf-8')
+            base64_data = base64.b64encode(image_data).decode("utf-8")
 
         ext = os.path.splitext(image_path)[1].lower()
-        if ext == '.png':
-            mime_type = 'image/png'
-        elif ext in ['.jpg', '.jpeg']:
-            mime_type = 'image/jpeg'
-        elif ext == '.webp':
-            mime_type = 'image/webp'
-        elif ext == '.bmp':
-            mime_type = 'image/bmp'
+        if ext == ".png":
+            mime_type = "image/png"
+        elif ext in [".jpg", ".jpeg"]:
+            mime_type = "image/jpeg"
+        elif ext == ".webp":
+            mime_type = "image/webp"
+        elif ext == ".bmp":
+            mime_type = "image/bmp"
         else:
-            mime_type = 'image/png'
+            mime_type = "image/png"
 
         return f"data:{mime_type};base64,{base64_data}"
 
@@ -85,21 +85,21 @@ def encode_image_to_base64(image_path):
 def create_test_image():
     """Create a simple test image with text"""
     try:
-        img = PILImage.new('RGB', (200, 100), color='white')
+        img = PILImage.new("RGB", (200, 100), color="white")
 
         from PIL import ImageDraw, ImageFont
         draw = ImageDraw.Draw(img)
 
         try:
-            font = ImageFont.truetype('/System/Library/Fonts/Arial.ttf', 20)
+            font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 20)
         except:
             font = ImageFont.load_default()
 
-        draw.text((10, 30), "Test Image", fill='black', font=font)
-        draw.text((10, 60), "For Chandra", fill='black', font=font)
+        draw.text((10, 30), "Test Image", fill="black", font=font)
+        draw.text((10, 60), "For Chandra", fill="black", font=font)
 
-        test_image_path = '/tmp/test_chandra_image.png'
-        img.save(test_image_path, 'PNG')
+        test_image_path = "/tmp/test_chandra_image.png"
+        img.save(test_image_path, "PNG")
         logger.info(f"Created test image: {test_image_path}")
         return test_image_path
 
@@ -153,12 +153,12 @@ def send_chat_request(api_url, api_key, image_base64, text_prompt):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Test Chandra-8bit CV/OCR model with file upload')
-    parser.add_argument('--image-file', type=str, help='Path to image file (default: create test image)')
-    parser.add_argument('--text', type=str, default='What is in this image? Describe it in detail.', help='Text prompt for image')
-    parser.add_argument('--api-url', type=str, default=DEFAULT_API_URL, help='MLX Router API URL')
-    parser.add_argument('--api-key', type=str, default=DEFAULT_API_KEY, help='API key (required but ignored)')
-    parser.add_argument('--create-image', action='store_true', help='Create a test image instead of loading from file')
+    parser = argparse.ArgumentParser(description="Test Chandra-8bit CV/OCR model with file upload")
+    parser.add_argument("--image-file", type=str, help="Path to image file (default: create test image)")
+    parser.add_argument("--text", type=str, default="What is in this image? Describe it in detail.", help="Text prompt for image")
+    parser.add_argument("--api-url", type=str, default=DEFAULT_API_URL, help="MLX Router API URL")
+    parser.add_argument("--api-key", type=str, default=DEFAULT_API_KEY, help="API key (required but ignored)")
+    parser.add_argument("--create-image", action="store_true", help="Create a test image instead of loading from file")
 
     args = parser.parse_args()
 
@@ -188,8 +188,8 @@ def main():
         logger.info(json.dumps(response, indent=2))
         logger.info("=" * 60)
 
-        if 'choices' in response and len(response['choices']) > 0:
-            assistant_message = response['choices'][0]['message']['content']
+        if "choices" in response and len(response["choices"]) > 0:
+            assistant_message = response["choices"][0]["message"]["content"]
             logger.info(f"\nAssistant Response:\n{assistant_message}")
 
         logger.info("\n" + "=" * 60)
