@@ -353,7 +353,69 @@ The `config.json` file allows you to:
 - Edit with: `nano ~/mlx_router_app/config.json`
 - Restart service after changes to apply modifications
 
-Example configuration structure:
+### Configuration Reference
+
+#### `defaults` Section
+
+Global settings that apply to all models unless overridden:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `max_tokens` | int | 4096 | Maximum tokens for generation |
+| `timeout` | int | 120 | Generation timeout in seconds |
+| `cache_size` | int | 2 | Number of models to keep cached |
+| `memory_threshold_gb` | float | 80.0 | Memory threshold for pressure calculations |
+| `safety_margin` | float | 1.2 | Multiplier for model memory requirements (1.2 = 20% buffer) |
+| `swap_critical_percent` | float | 90.0 | Swap usage % that triggers critical pressure |
+| `swap_high_percent` | float | 75.0 | Swap usage % that triggers high pressure |
+| `stream` | bool | false | Enable streaming responses by default |
+| `stream_chunk_size` | int | 32 | Number of tokens per streaming chunk |
+| `streaming_format` | string | "sse" | Format: "sse", "json_lines", or "json_array" |
+| `warmup_tokens` | int | 5 | Tokens generated during model warmup |
+| `enable_function_calling` | bool | true | Enable tool/function calling support |
+| `model` | string | - | Default model to preload on startup |
+| `model_directory` | string | "$HOME/models" | Path to local model storage |
+
+#### `server` Section
+
+Network and server configuration:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `ip` | string | "0.0.0.0" | IP address to bind to |
+| `port` | int | 8800 | Port number |
+| `debug` | bool | false | Enable debug logging |
+
+#### `models` Section
+
+Per-model configuration. Each model entry uses the model ID as key:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `max_tokens` | int | No | Maximum tokens for this model |
+| `temp` | float | No | Temperature (0.0-2.0, lower = more deterministic) |
+| `top_p` | float | No | Nucleus sampling threshold (0.0-1.0) |
+| `top_k` | int | No | Top-k sampling limit |
+| `min_p` | float | No | Minimum probability threshold |
+| `chat_template` | string | Yes | Template format: "llama3", "qwen", "deepseek", "phi4", "chatml", "gpt-oss", "generic" |
+| `reasoning_response` | string | No | "enable" or "disable" - for models with reasoning output (e.g., GPT-OSS, Phi-4) |
+| `required_memory_gb` | float | Yes | RAM required to load the model |
+| `supports_tools` | bool | No | Whether model supports function calling |
+| `memory_pressure_max_tokens` | object | No | Token limits per pressure level (see below) |
+
+#### `memory_pressure_max_tokens` Object
+
+Dynamic token limits based on system memory pressure:
+
+| Key | Description |
+|-----|-------------|
+| `normal` | Token limit when memory is abundant |
+| `moderate` | Token limit under moderate pressure |
+| `high` | Token limit under high pressure |
+| `critical` | Token limit under critical pressure |
+
+### Example Configuration
+
 ```json
 {
   "defaults": {
