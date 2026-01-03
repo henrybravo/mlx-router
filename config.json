@@ -21,6 +21,22 @@
         "debug": false
     },
     "models": {
+        "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit": {
+            "max_tokens": 16384,
+            "temp": 0.7,
+            "top_p": 0.9,
+            "top_k": 40,
+            "min_p": 0.05,
+            "chat_template": "generic",
+            "reasoning_response": "enable",
+            "required_memory_gb": 40,
+            "memory_pressure_max_tokens": {
+                    "normal": 16384,
+                    "moderate": 16384,
+                    "high": 16384,
+                    "critical": 8192
+            }
+        },
         "mlx-community/gpt-oss-120b-MXFP4-Q8": {
             "max_tokens": 16384,
             "temp": 0.7,
