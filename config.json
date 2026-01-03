@@ -4,6 +4,7 @@
       "timeout": 120,
       "cache_size": 2,
       "memory_threshold_gb": 5.0,
+      "safety_margin": 1.2,
       "swap_critical_percent": 99.0,
       "swap_high_percent": 90.0,
       "stream": true,

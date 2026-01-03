@@ -18,7 +18,8 @@ class ResourceMonitor:
     _memory_threshold_gb = 80.0  # Default fallback value
     _swap_critical_percent = 90.0  # Default swap critical threshold
     _swap_high_percent = 75.0  # Default swap high threshold
-    
+    _safety_margin = 1.2  # Default safety margin for model loading
+
     @classmethod
     def set_memory_threshold_gb(cls, threshold_gb: float):
         """Set the memory threshold in GB for pressure calculations"""
@@ -31,6 +32,12 @@ class ResourceMonitor:
         cls._swap_critical_percent = critical_percent
         cls._swap_high_percent = high_percent
         logger.info(f"Swap thresholds set to critical={critical_percent}%, high={high_percent}%")
+
+    @classmethod
+    def set_safety_margin(cls, safety_margin: float):
+        """Set the safety margin multiplier for model memory requirements"""
+        cls._safety_margin = safety_margin
+        logger.info(f"Safety margin set to {safety_margin}x")
 
     @staticmethod
     def get_memory_info(use_cache=True):
@@ -173,8 +180,8 @@ class ResourceMonitor:
         # Fallback to standard max_tokens if no pressure-specific config
         return model_config.get("max_tokens", 4096)
     
-    @staticmethod
-    def should_defer_model_load(model_name):
+    @classmethod
+    def should_defer_model_load(cls, model_name):
         """Check if model loading should be deferred due to memory pressure"""
-        can_load, details = ResourceMonitor.can_load_model(model_name, safety_margin=1.2, use_cache=False)
+        can_load, details = cls.can_load_model(model_name, safety_margin=cls._safety_margin, use_cache=False)
         return not can_load, details['reason']

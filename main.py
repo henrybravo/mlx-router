@@ -187,6 +187,11 @@ def main():
             ResourceMonitor.set_swap_thresholds(swap_critical, swap_high)
             logger.info(f"Configured swap thresholds: critical={swap_critical}%, high={swap_high}%")
 
+            # Configure safety margin for model loading
+            safety_margin = defaults.get('safety_margin', 1.2)
+            ResourceMonitor.set_safety_margin(safety_margin)
+            logger.info(f"Configured safety margin: {safety_margin}x")
+
             ModelConfig.load_from_dict(models_config)
 
             # Apply config values only if CLI args weren't explicitly provided
