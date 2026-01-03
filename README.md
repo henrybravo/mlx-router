@@ -90,13 +90,16 @@ The project features a clean modular architecture:
 ### Package Structure
 ```
 mlx_router/
-├── config/          # Configuration management
-│   └── model_config.py
-├── core/            # Core MLX logic
-│   ├── model_manager.py
-│   └── resource_monitor.py
-└── api/             # FastAPI application
-    └── app.py
+├── api                    ## FastAPI application
+│   └── app.py              # API endpoint handlers
+├── config                 ## Configuration management 
+│   └── model_config.py     # ModelConfig class
+└── core                   ## Core MLX logic     
+    ├── content.py          # Content normalization utilities
+    ├── manager.py          # MLXModelManager class
+    ├── patterns.py         # Chat template patterns
+    ├── resource_monitor.py # Memory monitoring
+    └── templates.py        # Chat template handling 
 ```
 
 ### Core Components
