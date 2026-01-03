@@ -3,9 +3,6 @@
 Model Manager for handling MLX model loading, generation, and message formatting
 """
 
-import gc
-import hashlib
-import json
 import logging
 import os
 import re
@@ -13,15 +10,6 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Optional, List, Dict, Any
-
-try:
-    from jsonschema import validate, ValidationError
-except ImportError:
-    def validate(instance, schema): pass
-    class ValidationError(Exception): pass
-    _jsonschema_available = False
-else:
-    _jsonschema_available = True
 
 import mlx.core as mx
 from mlx_lm import load, generate
@@ -35,19 +23,15 @@ from mlx_router.core.templates import CHAT_TEMPLATES
 try:
     from mlx_vlm import load as load_vision_model
     from mlx_vlm import generate as generate_vision
-    from mlx_vlm.prompt_utils import apply_chat_template
     _vision_available = True
 except ImportError:
     _vision_available = False
-
-logger = logging.getLogger(__name__)
 
 if not _vision_available:
     logger.warning("mlx-vlm not installed. Vision model support will be disabled.")
     logger.warning("Install with: pip install mlx-vlm>=0.3.9")
 
-if not _jsonschema_available:
-    logger.warning("jsonschema not installed. Tool validation will be limited.")
+logger = logging.getLogger(__name__)
 class MLXModelManager:
     """Core logic for managing MLX models, with detailed logic"""
     def __init__(self, max_tokens=4096, timeout=120):
