@@ -17,7 +17,7 @@ from logging.handlers import RotatingFileHandler
 import mlx.core as mx
 import uvicorn
 
-from mlx_router.core.model_manager import MLXModelManager
+from mlx_router.core.manager import MLXModelManager
 from mlx_router.core.resource_monitor import ResourceMonitor
 from mlx_router.config.model_config import ModelConfig
 from mlx_router.api.app import app, set_model_manager
