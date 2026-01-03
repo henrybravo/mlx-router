@@ -20,7 +20,9 @@ from mlx_router.core.resource_monitor import ResourceMonitor
 from mlx_router.core.content import MessageContent, normalize_message_content
 from mlx_router.__version__ import VERSION
 
-VISION_ENABLED_MODELS = []
+VISION_ENABLED_MODELS = [
+    'vl', 'vision', 'llava', 'qwen-vl', 'nvl'
+]
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +81,7 @@ def normalize_request_messages(messages: List[ChatMessage], model_id: str) -> Li
         List of dict with role and normalized string content
     """
     normalized = []
-    support_vision = any(model in VISION_ENABLED_MODELS for model in [model_id])
+    support_vision = any(keyword.lower() in model_id.lower() for keyword in VISION_ENABLED_MODELS)
 
     for msg in messages:
         try:

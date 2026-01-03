@@ -31,6 +31,20 @@ from mlx_lm.sample_utils import make_sampler
 from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.resource_monitor import ResourceMonitor
 
+try:
+    from mlx_vlm import load as load_vision_model
+    from mlx_vlm import generate as generate_vision
+    from mlx_vlm.prompt_utils import apply_chat_template
+    _vision_available = True
+except ImportError:
+    _vision_available = False
+
+logger = logging.getLogger(__name__)
+
+if not _vision_available:
+    logger.warning("mlx-vlm not installed. Vision model support will be disabled.")
+    logger.warning("Install with: pip install mlx-vlm>=0.3.9")
+
 logger = logging.getLogger(__name__)
 
 # Warn about missing jsonschema if needed
@@ -196,6 +210,8 @@ class MLXModelManager:
         self.current_model = None
         self.current_tokenizer = None
         self.current_model_name = None
+        self.is_vision_model = False
+        self.vision_processor = None
         self.default_max_tokens = max_tokens
         self.default_timeout = timeout
         self.model_lock = threading.Lock()
@@ -307,9 +323,12 @@ class MLXModelManager:
         if not model_name:
             raise ValueError(f"Invalid model name: {model_name}")
 
-        # Allow loading if it's in available_models or if it's a potential HF model
+        is_vision = any(keyword in model_name.lower() for keyword in ['vl', 'vision', 'llava', 'qwen-vl', 'nvl'])
+
+        if is_vision and not _vision_available:
+            raise RuntimeError(f"Vision model support not available. Install mlx-vlm>=0.3.9")
+
         if model_name not in self.available_models:
-            # Check if it's a reasonable HF identifier
             if '/' not in model_name or len(model_name.split('/')) != 2:
                 raise ValueError(f"Invalid or unavailable model name: {model_name}")
             logger.info(f"Attempting to load non-configured model: {model_name}")
@@ -326,11 +345,18 @@ class MLXModelManager:
 
             try:
                 start_time = time.time()
-                # Resolve model path - check local directory first, then fall back to HuggingFace
                 resolved_model_path = ModelConfig.resolve_model_path(model_name)
                 logger.debug(f"Resolved model path: {resolved_model_path}")
 
-                self.current_model, self.current_tokenizer = load(resolved_model_path)
+                if is_vision:
+                    self.current_model, self.vision_processor = load_vision_model(resolved_model_path)
+                    self.is_vision_model = True
+                    self.current_tokenizer = None
+                    logger.info(f"Loaded as vision model")
+                else:
+                    self.current_model, self.current_tokenizer = load(resolved_model_path)
+                    self.is_vision_model = False
+
                 self._warmup_model()
                 self.current_model_name = model_name
                 mem_info = ResourceMonitor.get_memory_info()
@@ -347,6 +373,8 @@ class MLXModelManager:
             del self.current_model
             del self.current_tokenizer
             self.current_model = self.current_tokenizer = self.current_model_name = None
+            self.is_vision_model = False
+            self.vision_processor = None
             self._cleanup_memory()
         else:
             logger.debug("No current model to unload.")

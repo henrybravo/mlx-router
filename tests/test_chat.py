@@ -260,10 +260,47 @@ class TestContentNormalization:
         expected = "What is in this image?"
         self.assert_equal(result, expected, "Image content filtered out, text returned")
 
+    def test_tc15_vision_model_detection(self):
+        """TC15: Vision model keyword detection"""
+        print("\n🧪 TC15: Vision Model Detection")
+        print("=" * 50)
+
+        from mlx_router.api.app import VISION_ENABLED_MODELS
+
+        # Check common vision model keywords
+        for keyword in ['vl', 'vision', 'llava', 'qwen-vl', 'nvl']:
+            self.assert_equal(
+                keyword in VISION_ENABLED_MODELS,
+                True,
+                f"Vision keyword '{keyword}' should be in enabled list"
+            )
+
+    def test_tc16_text_model_no_vision_keywords(self):
+        """TC16: Text models without vision keywords"""
+        print("\n🧪 TC16: Text Model (No Vision Keywords)")
+        print("=" * 50)
+
+        from mlx_router.api.app import VISION_ENABLED_MODELS
+
+        # Text models should not trigger vision support
+        text_models = [
+            "mlx-community/Llama-3.2-3B-Instruct-4bit",
+            "mlx-community/Qwen3-30B-A3B-8bit",
+            "deepseek-ai/deepseek-coder-6.7b-instruct"
+        ]
+
+        for model_name in text_models:
+            support_vision = any(keyword.lower() in model_name.lower() for keyword in VISION_ENABLED_MODELS)
+            self.assert_equal(
+                support_vision,
+                False,
+                f"Text model '{model_name}' should not have vision support"
+            )
+
     def run_all_tests(self):
         """Run all test cases and report results"""
         print("\n" + "=" * 60)
-        print("🚀 Running OpenAI Multimodal Content Format Tests (Phase 1)")
+        print("🚀 Running OpenAI Multimodal Content Format Tests (Phase 1 & 2)")
         print("=" * 60)
 
         self.test_tc1_string_content()
@@ -280,6 +317,8 @@ class TestContentNormalization:
         self.test_tc12_complex_multimodal_structure()
         self.test_tc13_image_url_content_with_vision_disabled()
         self.test_tc14_image_url_content_with_vision_enabled()
+        self.test_tc15_vision_model_detection()
+        self.test_tc16_text_model_no_vision_keywords()
 
         print("\n" + "=" * 60)
         print(f"📊 Test Results: {self.passed} passed, {self.failed} failed")
