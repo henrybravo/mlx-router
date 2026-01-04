@@ -885,20 +885,11 @@ MLX Router supports three streaming formats for maximum client compatibility:
 
 | Format | Configuration | Best For | Response Type |
 |--------|---------------|----------|---------------|
-| **SSE** (default) | `"streaming_format": "sse"` | curl, Python requests | `data: {json}\n\n...` |
+| **SSE** (default) | `"streaming_format": "sse"` | curl, Python requests, OpenWebUI, Goose | `data: {json}\n\n...` |
 | **JSON Lines** | `"streaming_format": "json_lines"` | Advanced clients | `{json}\n{json}\n...` |
 | **JSON Array** | `"streaming_format": "json_array"` | Goose, OpenWebUI | `{"object": "chat.completion", "choices": [...]}` |
 
-However, **SSE is the OpenAI standard** - most clients (OpenWebUI, Python openai lib, etc.) expect it by default.
-
-**For Goose/OpenWebUI compatibility:**
-```json
-{
-  "defaults": {
-    "streaming_format": "json_array"
-  }
-}
-```
+**SSE is the OpenAI standard** - most clients (OpenWebUI, Python openai lib, etc.) expect it by default and I recommend using it unless your client and LLM require a different format.
 
 **🔧 Function Calling**
 - **OpenAI-compatible** - Full compliance with function calling API

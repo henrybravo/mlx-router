@@ -8,7 +8,7 @@
       "swap_critical_percent": 99.0,
       "swap_high_percent": 90.0,
       "stream": true,
-      "stream_chunk_size": 4,
+      "stream_chunk_size": 8,
       "streaming_format": "sse",
       "warmup_tokens": 5,
       "enable_function_calling": true,

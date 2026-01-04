@@ -809,55 +809,38 @@ class MLXModelManager:
             self._cleanup_temp_files(processed_images)
 
     def _stream_tokens(self, response_generator, start_time, stream_chunk_size=None):
-        """Generator helper for streaming tokens with minimal buffering for real-time delivery
+        """Generator helper for streaming tokens with real-time delivery
         
         Args:
-            stream_chunk_size: Buffer size limit. Default 8 for real-time delivery.
-                             Higher values batch more tokens before yielding.
+            stream_chunk_size: Number of tokens to batch before yielding.
+                             Default 1 = yield every token immediately for streaming.
         """
         token_count = 0
         buffer = ""
-        # Use config value or default to 8 for real-time delivery
-        buffer_size_limit = stream_chunk_size if stream_chunk_size is not None else 8
+        batch_token_count = 0
+        # Batch tokens (not characters) before yielding
+        batch_size = stream_chunk_size if stream_chunk_size is not None else 1
 
         for token in response_generator:
             token_count += 1
+            batch_token_count += 1
             buffer += token
 
-            # Yield tokens aggressively for real-time streaming
-            # Only buffer when we detect potential special token starts
-            if len(buffer) >= buffer_size_limit:
-                # Check for special token patterns that need buffering
-                has_partial_special = (
-                    buffer.endswith('<') or 
-                    buffer.endswith('<|') or 
-                    buffer.endswith('<|e') or
-                    buffer.endswith('<|en') or
-                    buffer.endswith('<|end') or
-                    '<|' in buffer[-10:] and '|>' not in buffer[-10:]  # Incomplete special token
-                )
+            # Yield after accumulating batch_size tokens
+            if batch_token_count >= batch_size:
+                # Sanitize buffer for special tokens
+                cleaned = buffer
                 
-                if has_partial_special:
-                    # Keep buffering to see full special token
-                    continue
-                
-                # Check if buffer contains complete special tokens to filter
-                if '<|' in buffer and '|>' in buffer:
-                    # Apply cleanup patterns to complete tokens
-                    cleaned = buffer
+                # Apply cleanup patterns if special tokens are present
+                if '<|' in cleaned and '|>' in cleaned:
                     for pattern, replacement in CLEANUP_PATTERNS:
                         cleaned = pattern.sub(replacement, cleaned)
-                    if cleaned:
-                        yield cleaned
-                    buffer = ""
-                else:
-                    # No special tokens - yield immediately
-                    yield buffer
-                    buffer = ""
-            elif token and '<' not in buffer and '|' not in buffer:
-                # No special chars at all - yield token immediately for real-time delivery
-                yield buffer
+                
+                if cleaned:
+                    yield cleaned
+                
                 buffer = ""
+                batch_token_count = 0
 
         # Process remaining buffer at the end
         if buffer:
