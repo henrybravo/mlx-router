@@ -272,27 +272,38 @@ curl -s http://localhost:8800/v1/models | jq
 curl -s -X POST http://localhost:8800/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+    "model": "mlx-community/gpt-oss-120b-MXFP4-Q8",
     "messages": [
       {"role": "user", "content": "Hello, how are you?"}
     ],
     "temperature": 0.7,
-    "max_tokens": 1000
-  }' | jq
+    "stream": false,
+    "max_tokens": 1024
+  }' | jq -r '.choices[0].message.content'
 ```
 
 **Streaming Response:**
+
 ```bash
+# asuming you have "stream": true in config.json
 curl -s -X POST http://localhost:8800/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+    "model": "mlx-community/Llama-3.3-70B-Instruct-4bit",
     "messages": [
       {"role": "user", "content": "Write a short poem about technology"}
-    ],
-    "stream": true,
-    "max_tokens": 100
+    ]
   }'
+```
+
+```bash
+curl -sN -X POST http://localhost:8800/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/Llama-3.3-70B-Instruct-4bit",
+    "messages": [{"role": "user", "content": "Write a short poem about technology"}],
+    "stream": true
+  }' | sed -n 's/^data: //p' | grep -v '^\[DONE\]' | jq -rj '.choices[0].delta.content // empty' && echo
 ```
 
 **Function Calling:**
@@ -300,7 +311,7 @@ curl -s -X POST http://localhost:8800/v1/chat/completions \
 curl -s -X POST http://localhost:8800/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+    "model": "mlx-community/Llama-3.3-70B-Instruct-4bit",
     "messages": [
       {"role": "user", "content": "What is the weather like in San Francisco?"}
     ],
@@ -402,7 +413,7 @@ curl -s -X POST http://localhost:8800/v1/chat/completions \
     ],
     "max_tokens": 2048,
     "stream": false
-  }' | jq
+  }' | jq -r '.choices[0].message.content'
 ```
 
 ### Example: PDF OCR
@@ -433,7 +444,7 @@ curl -s -X POST http://localhost:8800/v1/chat/completions \
     ],
     "max_tokens": 4096,
     "stream": false
-  }' | jq
+  }' | jq -r '.choices[0].message.content'
 ```
 
 ### Tested Models
@@ -446,6 +457,7 @@ Other mlx-vlm compatible vision models should also work (e.g., LLaVA, Qwen-VL va
 
 Vision features have been tested with:
 - **curl** - Direct API calls (examples above)
+- **tests/test_vision_model.py** - Automated test script for vision model functionality
 - **OpenWebUI** - Web interface with image upload support
 - **Python requests** - Programmatic access via test scripts
 
@@ -487,7 +499,7 @@ Global settings that apply to all models unless overridden:
 | `swap_critical_percent` | float | 90.0 | Swap usage % that triggers critical pressure |
 | `swap_high_percent` | float | 75.0 | Swap usage % that triggers high pressure |
 | `stream` | bool | false | Enable streaming responses by default |
-| `stream_chunk_size` | int | 32 | Number of tokens per streaming chunk |
+| `stream_chunk_size` | int | 8 | Number of tokens per streaming chunk |
 | `streaming_format` | string | "sse" | Format: "sse", "json_lines", or "json_array" |
 | `warmup_tokens` | int | 5 | Tokens generated during model warmup |
 | `enable_function_calling` | bool | true | Enable tool/function calling support |
@@ -542,13 +554,15 @@ Dynamic token limits based on system memory pressure:
     "timeout": 120,
     "cache_size": 2,
     "memory_threshold_gb": 2.0,
-    "swap_critical_percent": 95.0,
-    "swap_high_percent": 85.0,
-    "stream": false,
-    "enable_function_calling": true,
-    "model": "mlx-community/Llama-3.3-70B-Instruct-4bit",
+    "safety_margin": 0.9,
+    "swap_critical_percent": 99.0,
+    "swap_high_percent": 90.0,
+    "stream": true,
     "stream_chunk_size": 32,
+    "streaming_format": "sse",
     "warmup_tokens": 5,
+    "enable_function_calling": true,
+    "model": "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit",
     "model_directory": "/Users/username/models"
   },
   "server": {
@@ -557,33 +571,33 @@ Dynamic token limits based on system memory pressure:
       "debug": false
   },
   "models": {
-    "mlx-community/Llama-3.3-70B-Instruct-4bit": {
-      "max_tokens": 8192,
-      "temp": 0.7,
-      "top_p": 0.95,
-      "top_k": 50,
-      "min_p": 0.05,
-      "chat_template": "llama3",
-      "required_memory_gb": 40,
-      "supports_tools": true,
-      "memory_pressure_max_tokens": {
-        "normal": 4096,
-        "moderate": 2048,
-        "high": 1024,
-        "critical": 512
-      }
-    },
-    "deepseek-ai/deepseek-coder-6.7b-instruct": {
-      "max_tokens": 4096,
-      "temp": 0.1,
-      "top_p": 0.95,
-      "top_k": 20,
-      "min_p": 0.1,
-      "chat_template": "deepseek",
-      "required_memory_gb": 8,
-      "supports_tools": true
-    }
-    }
+      "mlx-community/chandra-8bit": {
+          "max_tokens": 8192,
+          "temp": 0.7,
+          "top_p": 0.9,
+          "top_k": 50,
+          "min_p": 0.05,
+          "chat_template": "generic",
+          "required_memory_gb": 4,
+          "supports_tools": false,
+          "supports_vision": true
+      },
+      "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit": {
+          "max_tokens": 16384,
+          "temp": 0.7,
+          "top_p": 0.9,
+          "top_k": 40,
+          "min_p": 0.05,
+          "chat_template": "generic",
+          "reasoning_response": "enable",
+          "required_memory_gb": 40,
+          "memory_pressure_max_tokens": {
+                  "normal": 16384,
+                  "moderate": 16384,
+                  "high": 16384,
+                  "critical": 8192
+          }
+      },
 }
 ```
 
@@ -802,10 +816,11 @@ curl -s http://localhost:8800/v1/models | jq
 curl -s -X POST http://localhost:8800/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 50
-  }' | jq
+    "model": "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit",
+    "messages": [{"role": "user", "content": "What existed first: the chicken or the egg?"}],
+    "stream": false,
+    "max_tokens": 1024
+  }' | jq -r '.choices[0].message.content'
 ```
 
 ## Troubleshooting
@@ -873,6 +888,8 @@ MLX Router supports three streaming formats for maximum client compatibility:
 | **SSE** (default) | `"streaming_format": "sse"` | curl, Python requests | `data: {json}\n\n...` |
 | **JSON Lines** | `"streaming_format": "json_lines"` | Advanced clients | `{json}\n{json}\n...` |
 | **JSON Array** | `"streaming_format": "json_array"` | Goose, OpenWebUI | `{"object": "chat.completion", "choices": [...]}` |
+
+However, **SSE is the OpenAI standard** - most clients (OpenWebUI, Python openai lib, etc.) expect it by default.
 
 **For Goose/OpenWebUI compatibility:**
 ```json

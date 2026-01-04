@@ -4,12 +4,12 @@
       "timeout": 120,
       "cache_size": 2,
       "memory_threshold_gb": 5.0,
-      "safety_margin": 1.2,
+      "safety_margin": 0.9,
       "swap_critical_percent": 99.0,
       "swap_high_percent": 90.0,
       "stream": true,
       "stream_chunk_size": 32,
-      "streaming_format": "json_array",
+      "streaming_format": "sse",
       "warmup_tokens": 5,
       "enable_function_calling": true,
       "model": "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit",       
@@ -31,7 +31,7 @@
             "required_memory_gb": 4,
             "supports_tools": false,
             "supports_vision": true
-    },
+        },
         "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit": {
             "max_tokens": 16384,
             "temp": 0.7,

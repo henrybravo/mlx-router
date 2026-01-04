@@ -3,9 +3,9 @@
 Model Manager for handling MLX model loading, generation, and message formatting
 """
 
-import base64
 import gc
-import io
+import hashlib
+import json
 import logging
 import os
 import re
@@ -19,11 +19,21 @@ import mlx.core as mx
 from mlx_lm import load, generate
 from mlx_lm.sample_utils import make_sampler
 
+try:
+    from jsonschema import validate, ValidationError
+    _jsonschema_available = True
+except ImportError:
+    _jsonschema_available = False
+    validate = None
+    ValidationError = Exception
+
 from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.resource_monitor import ResourceMonitor
 from mlx_router.core.patterns import CLEANUP_PATTERNS, GPT_OSS_CLEANUP_PATTERNS, REASONING_PATTERNS, GPT_OSS_FINAL_PATTERN, GPT_OSS_CHANNEL_PATTERN, NEWLINE_PATTERN
 from mlx_router.core.templates import CHAT_TEMPLATES
 from mlx_router.core.content import decode_base64_to_images, is_pdf_data
+
+logger = logging.getLogger(__name__)
 
 try:
     from mlx_vlm import load as load_vision_model
@@ -33,12 +43,9 @@ try:
     _vision_available = True
 except ImportError:
     _vision_available = False
-
-if not _vision_available:
     logger.warning("mlx-vlm not installed. Vision model support will be disabled.")
     logger.warning("Install with: pip install mlx-vlm>=0.3.9")
 
-logger = logging.getLogger(__name__)
 class MLXModelManager:
     """Core logic for managing MLX models, with detailed logic"""
     def __init__(self, max_tokens=4096, timeout=120):
@@ -561,8 +568,13 @@ class MLXModelManager:
                 'finish_reason': 'error'
             }
 
-    async def generate_stream_response(self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None, images=None):
-        """Generate streaming response for real-time token delivery"""
+    async def generate_stream_response(self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None, images=None, stream_chunk_size=None):
+        """Generate streaming response for real-time token delivery
+        
+        Args:
+            stream_chunk_size: Buffer size for streaming tokens (default: 8). Higher values may improve
+                             throughput but increase latency. Lower values give more real-time delivery.
+        """
         if not self.current_model:
             logger.error("Streaming generation attempted without a loaded model.")
             yield "ERROR: No model loaded. Please select a model first."
@@ -611,7 +623,7 @@ class MLXModelManager:
                         return single_result_gen()
                     else:
                         return self._generate_with_mlx(
-                            prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=True
+                            prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=True, stream_chunk_size=stream_chunk_size
                         )
                 except Exception as e:
                     logger.error(f"Error in stream worker: {e}", exc_info=True)
@@ -629,7 +641,7 @@ class MLXModelManager:
             logger.error(f"Error during streaming generation with {self.current_model_name}: {e}", exc_info=True)
             yield f"ERROR: Streaming generation failed: {str(e)}"
 
-    def _generate_with_mlx(self, prompt, max_tokens, temperature, top_p, top_k, min_p, stream=False):
+    def _generate_with_mlx(self, prompt, max_tokens, temperature, top_p, top_k, min_p, stream=False, stream_chunk_size=None):
         """Core MLX generation logic - can return generator for streaming or full text"""
         try:
             sampler_args = {"temp": temperature, "top_p": top_p, "min_tokens_to_keep": 1}
@@ -662,7 +674,7 @@ class MLXModelManager:
             
             if stream:
                 # For streaming, return a generator that yields each token
-                return self._stream_tokens(response_generator, start_time)
+                return self._stream_tokens(response_generator, start_time, stream_chunk_size)
             else:
                 # For non-streaming, collect all tokens and return as string (backward compatibility)
                 response = "".join(response_generator)
@@ -796,40 +808,56 @@ class MLXModelManager:
             # Clean up temporary files
             self._cleanup_temp_files(processed_images)
 
-    def _stream_tokens(self, response_generator, start_time):
-        """Generator helper for streaming tokens with buffered filtering"""
+    def _stream_tokens(self, response_generator, start_time, stream_chunk_size=None):
+        """Generator helper for streaming tokens with minimal buffering for real-time delivery
+        
+        Args:
+            stream_chunk_size: Buffer size limit. Default 8 for real-time delivery.
+                             Higher values batch more tokens before yielding.
+        """
         token_count = 0
         buffer = ""
-        buffer_size_limit = 20  # Hold back tokens to enable pattern matching (reduced for better streaming)
+        # Use config value or default to 8 for real-time delivery
+        buffer_size_limit = stream_chunk_size if stream_chunk_size is not None else 8
 
         for token in response_generator:
             token_count += 1
             buffer += token
 
-            # When buffer gets large enough, try to yield safe tokens
-            if len(buffer) > buffer_size_limit:
-                # Check if buffer starts with a special token pattern
-                # Apply all cleanup patterns to detect special tokens
-                test_buffer = buffer
-                for pattern, _ in CLEANUP_PATTERNS:
-                    test_buffer = pattern.sub('', test_buffer)
-
-                # If patterns removed content from start, buffer contains special tokens
-                # Find safe content to yield (content before potential special tokens)
-                if '<' in buffer or '|' in buffer:
-                    # Find position of potential special token start
-                    special_pos = buffer.find('<')
-                    if special_pos > 10:  # Safe content before special token
-                        # Yield the safe part
-                        safe_part = buffer[:special_pos]
-                        yield safe_part
-                        buffer = buffer[special_pos:]
-                    # Otherwise keep buffering
+            # Yield tokens aggressively for real-time streaming
+            # Only buffer when we detect potential special token starts
+            if len(buffer) >= buffer_size_limit:
+                # Check for special token patterns that need buffering
+                has_partial_special = (
+                    buffer.endswith('<') or 
+                    buffer.endswith('<|') or 
+                    buffer.endswith('<|e') or
+                    buffer.endswith('<|en') or
+                    buffer.endswith('<|end') or
+                    '<|' in buffer[-10:] and '|>' not in buffer[-10:]  # Incomplete special token
+                )
+                
+                if has_partial_special:
+                    # Keep buffering to see full special token
+                    continue
+                
+                # Check if buffer contains complete special tokens to filter
+                if '<|' in buffer and '|>' in buffer:
+                    # Apply cleanup patterns to complete tokens
+                    cleaned = buffer
+                    for pattern, replacement in CLEANUP_PATTERNS:
+                        cleaned = pattern.sub(replacement, cleaned)
+                    if cleaned:
+                        yield cleaned
+                    buffer = ""
                 else:
-                    # No special characters, yield half the buffer (keep rest for safety)
-                    yield_pos = len(buffer) // 2
-                    yield buffer[:yield_pos]
-                    buffer = buffer[yield_pos:]
+                    # No special tokens - yield immediately
+                    yield buffer
+                    buffer = ""
+            elif token and '<' not in buffer and '|' not in buffer:
+                # No special chars at all - yield token immediately for real-time delivery
+                yield buffer
+                buffer = ""
 
         # Process remaining buffer at the end
         if buffer:

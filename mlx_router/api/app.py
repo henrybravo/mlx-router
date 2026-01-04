@@ -213,9 +213,10 @@ async def create_chat_completion(request: ChatCompletionRequest):
     model_manager.increment_request_count()
 
     if stream_mode:
-        # Get streaming format from config
+        # Get streaming format and chunk size from config
         streaming_format = _global_config.get('defaults', {}).get('streaming_format', 'sse')
-        logger.debug(f"ReqID-{request_id}: Using streaming format: {streaming_format}")
+        stream_chunk_size = _global_config.get('defaults', {}).get('stream_chunk_size', 8)
+        logger.debug(f"ReqID-{request_id}: Using streaming format: {streaming_format}, chunk_size: {stream_chunk_size}")
 
         # Handle streaming request
         async def stream_generator():
@@ -235,7 +236,8 @@ async def create_chat_completion(request: ChatCompletionRequest):
                         request.top_p,
                         request.top_k,
                         getattr(request, 'min_p', None),
-                        images=images
+                        images=images,
+                        stream_chunk_size=stream_chunk_size
                     ):
                         if token.startswith("ERROR:"):
                             # Handle error
@@ -295,7 +297,8 @@ async def create_chat_completion(request: ChatCompletionRequest):
                         request.top_p,
                         request.top_k,
                         getattr(request, 'min_p', None),
-                        images=images
+                        images=images,
+                        stream_chunk_size=stream_chunk_size
                     ):
                         if token.startswith("ERROR:"):
                             # Handle error in stream
