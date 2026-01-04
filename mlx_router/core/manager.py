@@ -3,9 +3,13 @@
 Model Manager for handling MLX model loading, generation, and message formatting
 """
 
+import base64
+import gc
+import io
 import logging
 import os
 import re
+import tempfile
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
@@ -19,10 +23,13 @@ from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.resource_monitor import ResourceMonitor
 from mlx_router.core.patterns import CLEANUP_PATTERNS, GPT_OSS_CLEANUP_PATTERNS, REASONING_PATTERNS, GPT_OSS_FINAL_PATTERN, GPT_OSS_CHANNEL_PATTERN, NEWLINE_PATTERN
 from mlx_router.core.templates import CHAT_TEMPLATES
+from mlx_router.core.content import decode_base64_to_images, is_pdf_data
 
 try:
     from mlx_vlm import load as load_vision_model
     from mlx_vlm import generate as generate_vision
+    from mlx_vlm import apply_chat_template as apply_vision_chat_template
+    from mlx_vlm.utils import load_config as load_vision_config
     _vision_available = True
 except ImportError:
     _vision_available = False
@@ -40,6 +47,7 @@ class MLXModelManager:
         self.current_model_name = None
         self.is_vision_model = False
         self.vision_processor = None
+        self.vision_config = None
         self.default_max_tokens = max_tokens
         self.default_timeout = timeout
         self.model_lock = threading.Lock()
@@ -151,7 +159,10 @@ class MLXModelManager:
         if not model_name:
             raise ValueError(f"Invalid model name: {model_name}")
 
-        is_vision = any(keyword in model_name.lower() for keyword in ['vl', 'vision', 'llava', 'qwen-vl', 'nvl'])
+        # Check config first for explicit supports_vision setting, then fall back to keyword detection
+        model_config = ModelConfig.get_config(model_name)
+        is_vision = model_config.get("supports_vision", False) or \
+            any(keyword in model_name.lower() for keyword in ['vl', 'vision', 'llava', 'qwen-vl', 'nvl'])
 
         if is_vision and not _vision_available:
             raise RuntimeError(f"Vision model support not available. Install mlx-vlm>=0.3.9")
@@ -178,6 +189,7 @@ class MLXModelManager:
 
                 if is_vision:
                     self.current_model, self.vision_processor = load_vision_model(resolved_model_path)
+                    self.vision_config = load_vision_config(resolved_model_path)
                     self.is_vision_model = True
                     self.current_tokenizer = None
                     logger.info(f"Loaded as vision model")
@@ -203,6 +215,7 @@ class MLXModelManager:
             self.current_model = self.current_tokenizer = self.current_model_name = None
             self.is_vision_model = False
             self.vision_processor = None
+            self.vision_config = None
             self._cleanup_memory()
         else:
             logger.debug("No current model to unload.")
@@ -467,7 +480,7 @@ class MLXModelManager:
             logger.warning(f"Failed to parse tool call JSON: {e}")
             return None
 
-    def generate_response(self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None):
+    def generate_response(self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None, images=None):
         """Generate response with timeout protection and optional tool support"""
         if not self.current_model:
             logger.error("Generation attempted without a loaded model.")
@@ -501,32 +514,23 @@ class MLXModelManager:
         
         # Format prompt with tools if provided
         prompt = self._format_messages(messages, tools)
-        
+
         try:
-            future = self.executor.submit(
-                self._generate_with_mlx, 
-                prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, False
-            )
-            raw_response = future.result(timeout=self.default_timeout)
-            
-            # Check for tool calls if tools were provided
-            if tools:
-                tool_calls = self._parse_tool_calls(raw_response, tools)
-                if tool_calls:
-                    return {
-                        'type': 'tool_calls',
-                        'content': None,
-                        'tool_calls': tool_calls['tool_calls'],
-                        'finish_reason': 'tool_calls'
-                    }
-            
-            # Standard text or vision response
+            # Generate response based on model type
             if self.is_vision_model:
-                raw_response = self._generate_with_vlm(prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=False)
+                future = self.executor.submit(
+                    self._generate_with_vlm,
+                    prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, images, False
+                )
             else:
-                raw_response = self._generate_with_mlx(prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, False)
-            
-            if tools:
+                future = self.executor.submit(
+                    self._generate_with_mlx,
+                    prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, False
+                )
+            raw_response = future.result(timeout=self.default_timeout)
+
+            # Check for tool calls if tools were provided (not applicable for vision models)
+            if tools and not self.is_vision_model:
                 tool_calls = self._parse_tool_calls(raw_response, tools)
                 if tool_calls:
                     return {
@@ -557,7 +561,7 @@ class MLXModelManager:
                 'finish_reason': 'error'
             }
 
-    async def generate_stream_response(self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None):
+    async def generate_stream_response(self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None, images=None):
         """Generate streaming response for real-time token delivery"""
         if not self.current_model:
             logger.error("Streaming generation attempted without a loaded model.")
@@ -593,26 +597,28 @@ class MLXModelManager:
             import asyncio
             loop = asyncio.get_running_loop()
 
-            def stream_worker():
-                """Worker function to run the streaming generator"""
+            def get_token_generator():
+                """Worker function to create and return the token generator"""
                 try:
                     if self.is_vision_model:
-                        token_generator = self._generate_with_vlm(
-                            prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=False
+                        # Vision models don't support streaming yet, return full response
+                        result = self._generate_with_vlm(
+                            prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, images=images, stream=False
                         )
-                        for token in token_generator:
-                            yield token
+                        # Wrap in a generator to yield the full response as a single token
+                        def single_result_gen():
+                            yield result
+                        return single_result_gen()
                     else:
-                        token_generator = self._generate_with_mlx(
+                        return self._generate_with_mlx(
                             prompt, max_tokens_val, temperature_val, top_p_val, top_k_val, min_p_val, stream=True
                         )
-                        return token_generator
                 except Exception as e:
                     logger.error(f"Error in stream worker: {e}", exc_info=True)
                     raise
 
             # Get the generator from executor
-            future = loop.run_in_executor(self.executor, stream_worker)
+            future = loop.run_in_executor(self.executor, get_token_generator)
             token_generator = await future
 
             # Yield tokens directly as they become available
@@ -669,7 +675,67 @@ class MLXModelManager:
             logger.error(f"MLX generation core error with {self.current_model_name}: {e}", exc_info=True)
             raise
 
-    def _generate_with_vlm(self, prompt, max_tokens, temperature, top_p, top_k, min_p, stream=False):
+    def _preprocess_images_for_vlm(self, images: List[str]) -> List[str]:
+        """
+        Preprocess images for vision model, converting PDFs to images if needed.
+
+        mlx-vlm expects file paths, not base64 data URIs. This method:
+        1. Decodes base64 data (handles both images and PDFs)
+        2. Saves PIL images to temporary files
+        3. Returns list of file paths
+
+        Args:
+            images: List of image URLs or base64 data URIs
+
+        Returns:
+            List of file paths to temporary image files
+        """
+        processed_images = []
+
+        for img_data in images:
+            # Check if it's a base64 data URI
+            if img_data.startswith('data:'):
+                try:
+                    # Use decode_base64_to_images which handles both images and PDFs
+                    pil_images = decode_base64_to_images(img_data)
+
+                    # Save PIL images to temporary files (mlx-vlm expects file paths)
+                    for pil_img in pil_images:
+                        # Convert to RGB if necessary (PDFs might be RGBA)
+                        if pil_img.mode in ('RGBA', 'LA', 'P'):
+                            pil_img = pil_img.convert('RGB')
+
+                        # Create a temporary file that won't be deleted automatically
+                        # (we'll let the OS clean up temp files)
+                        temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                        pil_img.save(temp_file.name, format='PNG')
+                        temp_file.close()
+                        processed_images.append(temp_file.name)
+                        logger.debug(f"Saved image to temp file: {temp_file.name}")
+
+                except ImportError as e:
+                    # PDF support not available
+                    raise RuntimeError(f"PDF processing requires pdf2image. Install with: pip install pdf2image. Error: {e}")
+                except Exception as e:
+                    logger.error(f"Failed to preprocess image: {e}")
+                    raise
+            else:
+                # URL or file path - pass through as-is
+                processed_images.append(img_data)
+
+        return processed_images
+
+    def _cleanup_temp_files(self, file_paths: List[str]):
+        """Clean up temporary image files created during preprocessing."""
+        for path in file_paths:
+            try:
+                if path.startswith(tempfile.gettempdir()) and os.path.exists(path):
+                    os.unlink(path)
+                    logger.debug(f"Cleaned up temp file: {path}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp file {path}: {e}")
+
+    def _generate_with_vlm(self, prompt, max_tokens, temperature, top_p, top_k, min_p, images=None, stream=False):
         """Core MLX-VLM generation logic - can return generator for streaming or full text"""
         if not _vision_available:
             logger.error("Vision model support not available. Install mlx-vlm>=0.3.9")
@@ -679,19 +745,38 @@ class MLXModelManager:
             logger.error("Vision generation attempted without a loaded model.")
             raise RuntimeError("No model loaded.")
 
+        processed_images = []
         try:
-            sampler_args = {"temp": temperature, "top_p": top_p, "min_tokens_to_keep": 1}
-            if min_p is not None and min_p > 0.0:
-                sampler_args["min_p"] = min_p
-            if top_k is not None and top_k > 0:
-                sampler_args["top_k"] = top_k
-
             start_time = time.time()
+
+            # Preprocess images - converts PDFs to images and saves to temp files
+            processed_images = self._preprocess_images_for_vlm(images) if images else []
+
+            # Prepare images - can be a single image or list of images
+            # mlx_vlm expects image as keyword arg, can be str or List[str]
+            image_arg = processed_images[0] if len(processed_images) == 1 else (processed_images if processed_images else None)
+            num_images = len(processed_images)
+            logger.debug(f"Vision generation with {num_images} images")
+
+            # Use mlx-vlm's apply_chat_template to format prompt with image placeholders
+            # This is required for vision models to properly handle image tokens
+            formatted_prompt = apply_vision_chat_template(
+                self.vision_processor,
+                self.vision_config,
+                prompt,
+                num_images=num_images
+            )
+            logger.debug(f"Formatted vision prompt: {formatted_prompt[:200]}...")
+
+            # Generate using mlx-vlm
             response = generate_vision(
-                self.current_model,
-                prompt=prompt,
+                model=self.current_model,
+                processor=self.vision_processor,
+                prompt=formatted_prompt,
+                image=image_arg,
                 max_tokens=max_tokens,
-                **sampler_args,
+                temp=temperature,
+                top_p=top_p,
                 verbose=False
             )
 
@@ -699,12 +784,17 @@ class MLXModelManager:
                 return response
             else:
                 gen_time = time.time() - start_time
-                logger.info(f"Generated vision response in {gen_time:.2f}s using {self.current_model_name}")
-                return response
+                # mlx_vlm.generate returns GenerationResult object with .text attribute
+                result_text = response.text if hasattr(response, 'text') else str(response)
+                logger.info(f"Generated vision response in {gen_time:.2f}s using {self.current_model_name} ({response.generation_tokens} tokens, {response.generation_tps:.1f} tokens/s)")
+                return result_text
 
         except Exception as e:
             logger.error(f"MLX-VLM generation error with {self.current_model_name}: {e}", exc_info=True)
             raise
+        finally:
+            # Clean up temporary files
+            self._cleanup_temp_files(processed_images)
 
     def _stream_tokens(self, response_generator, start_time):
         """Generator helper for streaming tokens with buffered filtering"""

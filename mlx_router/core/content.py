@@ -43,9 +43,90 @@ ContentPart = Union[TextContentPart, ImageUrlContentPart]
 MessageContent = Union[str, List[ContentPart]]
 
 
+def is_pdf_data(data: bytes) -> bool:
+    """Check if data is a PDF file by checking magic bytes."""
+    return data[:4] == b'%PDF'
+
+
+def convert_pdf_to_images(pdf_data: bytes, dpi: int = 150) -> List[Image.Image]:
+    """
+    Convert PDF data to list of PIL Images (one per page).
+
+    Args:
+        pdf_data: Raw PDF file bytes
+        dpi: Resolution for rendering (default 150)
+
+    Returns:
+        List of PIL Image objects, one per page
+
+    Raises:
+        ImportError: If pdf2image is not installed
+        ValueError: If PDF conversion fails
+    """
+    try:
+        from pdf2image import convert_from_bytes
+        images = convert_from_bytes(pdf_data, dpi=dpi)
+        logger.info(f"Converted PDF to {len(images)} image(s)")
+        return images
+    except ImportError:
+        logger.error("pdf2image is not installed. Install with: pip install pdf2image")
+        raise ImportError("PDF support requires pdf2image. Install with: pip install pdf2image")
+    except Exception as e:
+        logger.error(f"Failed to convert PDF to images: {e}")
+        raise ValueError(f"Failed to convert PDF: {str(e)}")
+
+
+def decode_base64_to_images(base64_data: str) -> List[Image.Image]:
+    """
+    Decode base64 data to list of PIL Images. Supports both images and PDFs.
+
+    For PDFs, each page is converted to a separate image.
+    For images, returns a single-element list.
+
+    Args:
+        base64_data: Base64 encoded data (with or without data URI prefix)
+
+    Returns:
+        List of PIL Image objects
+
+    Raises:
+        ValueError: If data is invalid or cannot be processed
+    """
+    try:
+        # Extract base64 string from data URI if present
+        data_uri_match = re.match(r'^data:([a-zA-Z/]+);base64,(.+)$', base64_data)
+        if data_uri_match:
+            mime_type = data_uri_match.group(1)
+            base64_str = data_uri_match.group(2)
+        else:
+            mime_type = None
+            base64_str = base64_data
+
+        data_bytes = base64.b64decode(base64_str)
+
+        # Check if it's a PDF
+        if is_pdf_data(data_bytes) or (mime_type and 'pdf' in mime_type.lower()):
+            logger.info("Detected PDF data, converting to images")
+            return convert_pdf_to_images(data_bytes)
+
+        # Otherwise treat as image
+        image = Image.open(io.BytesIO(data_bytes))
+        logger.debug("Successfully decoded base64 image")
+        return [image]
+    except ImportError:
+        # Re-raise ImportError for PDF support
+        raise
+    except Exception as e:
+        logger.error(f"Failed to decode base64 data: {e}")
+        raise ValueError(f"Invalid base64 data: {str(e)}")
+
+
 def decode_base64_image(base64_data: str) -> Optional[Image.Image]:
     """
     Decode base64 image data to PIL Image.
+
+    This is a convenience wrapper that returns a single image.
+    For PDFs, only the first page is returned.
 
     Args:
         base64_data: Base64 encoded image data (with or without data URI prefix)
@@ -56,20 +137,8 @@ def decode_base64_image(base64_data: str) -> Optional[Image.Image]:
     Raises:
         ValueError: If base64 data is invalid
     """
-    try:
-        data_uri_match = re.match(r'^data:image/([a-zA-Z]+);base64,(.+)$', base64_data)
-        if data_uri_match:
-            base64_str = data_uri_match.group(2)
-        else:
-            base64_str = base64_data
-
-        image_bytes = base64.b64decode(base64_str)
-        image = Image.open(io.BytesIO(image_bytes))
-        logger.debug("Successfully decoded base64 image")
-        return image
-    except Exception as e:
-        logger.error(f"Failed to decode base64 image: {e}")
-        raise ValueError(f"Invalid base64 image data: {str(e)}")
+    images = decode_base64_to_images(base64_data)
+    return images[0] if images else None
 
 
 def fetch_image_from_url(url: str, timeout: int = 10) -> Image.Image:
@@ -122,6 +191,38 @@ def preprocess_image_for_vision(image: Image.Image, target_size: Tuple[int, int]
         logger.error(f"Failed to preprocess image: {e}")
         raise ValueError(f"Failed to preprocess image: {str(e)}")
 
+
+
+def extract_images_from_content(content: MessageContent) -> List[str]:
+    """
+    Extract image URLs/base64 data from message content.
+
+    Args:
+        content: Either a string or list of content parts
+
+    Returns:
+        List of image URLs or base64 data URIs
+    """
+    images = []
+
+    if isinstance(content, str):
+        return images
+
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, ImageUrlContentPart):
+                images.append(part.image_url.url)
+            elif isinstance(part, dict):
+                if part.get('type') == 'image_url':
+                    image_url = part.get('image_url', {})
+                    if isinstance(image_url, dict):
+                        url = image_url.get('url', '')
+                    else:
+                        url = str(image_url)
+                    if url:
+                        images.append(url)
+
+    return images
 
 
 def normalize_message_content(content: MessageContent, support_vision: bool = False) -> str:

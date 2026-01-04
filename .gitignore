@@ -1,6 +1,6 @@
 *.md
 !README.md
-!AGENTS.md
+!AGENTS_INTEGRATION.md
 !INSTALL_TEST.md
 !CHANGELOG.md
 !recipes.md

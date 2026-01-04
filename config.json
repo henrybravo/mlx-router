@@ -9,10 +9,10 @@
       "swap_high_percent": 90.0,
       "stream": true,
       "stream_chunk_size": 32,
-      "streaming_format": "sse",
+      "streaming_format": "json_array",
       "warmup_tokens": 5,
       "enable_function_calling": true,
-      "model": "mlx-community/gpt-oss-120b-MXFP4-Q8",       
+      "model": "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit",       
       "model_directory": "/Users/username/models"
     },
     "server": {
@@ -21,6 +21,17 @@
         "debug": false
     },
     "models": {
+        "mlx-community/chandra-8bit": {
+            "max_tokens": 8192,
+            "temp": 0.7,
+            "top_p": 0.9,
+            "top_k": 50,
+            "min_p": 0.05,
+            "chat_template": "generic",
+            "required_memory_gb": 4,
+            "supports_tools": false,
+            "supports_vision": true
+    },
         "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit": {
             "max_tokens": 16384,
             "temp": 0.7,

@@ -1,12 +1,15 @@
 # MLX Router
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![MLX](https://img.shields.io/badge/MLX-0.29.0%2B-orange.svg)](https://github.com/ml-explore/mlx)
-[![FastAPI](https://img.shields.io/badge/FastAPI-async-green.svg)](https://fastapi.tiangolo.com/)
+[![MLX](https://img.shields.io/badge/MLX-0.29.2%2B-orange.svg)](https://github.com/ml-explore/mlx)
+[![mlx--lm](https://img.shields.io/badge/mlx--lm-0.30.0%2B-orange.svg)](https://github.com/ml-explore/mlx-lm)
+[![mlx--vlm](https://img.shields.io/badge/mlx--vlm-0.3.9%2B-orange.svg)](https://github.com/Blaizzy/mlx-vlm)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115.0%2B-green.svg)](https://fastapi.tiangolo.com/)
+[![Hugging Face Hub](https://img.shields.io/badge/HF%20Hub-1.2.0%2B-yellow.svg)](https://huggingface.co/docs/huggingface_hub)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/github/stars/henrybravo/mlx-router?style=social)](https://github.com/henrybravo/mlx-router)
 
-A powerful and efficient server for dynamically **routing API requests to multiple MLX models**, powered by FastAPI. Beyond routing, it's a **high-performance server**, leveraging GPU acceleration and robust features for local inference.
+An OpenAI-compatible inference server optimized for **Apple Silicon**. Hot-swap between MLX models, stream responses in real-time, process images and PDFs, and integrate with any OpenAI client.
 
 ![mlx-router](images/mlx-router-help-menu.png)
 
@@ -24,12 +27,13 @@ A powerful and efficient server for dynamically **routing API requests to multip
 - 🔧 **System service support** - Install as macOS launchd service with automatic startup and crash recovery
 - 🌊 **Response Streaming** - Real-time token delivery with Server-Sent Events (90%+ latency reduction)
 - 🔧 **Function Calling** - OpenAI-compatible tool/function calling for agent frameworks
+- 👁️ **Vision Model Support** - Process images and PDFs with multimodal models (mlx-vlm)
 
 ## Supported Models
 
 MLX Router supports **any MLX model** that is available locally. Models are automatically discovered from configured directories and can be loaded dynamically without server restart.
 
-### Local Model Directory Support (v2.1.2)
+### Local Model Directory Support
 
 Models are loaded from local directories (default: `$HOME/models`) with automatic configuration detection:
 
@@ -41,12 +45,7 @@ Models are loaded from local directories (default: `$HOME/models`) with automati
 
 ### Currently Configured Models
 
-The router comes pre-configured with these locally available models:
-
-- `mlx-community/Llama-3.3-70B-Instruct-4bit` (40GB RAM)
-- `mlx-community/Qwen3-30B-A3B-8bit` (18GB RAM)
-- `mlx-community/Phi-4-reasoning-plus-6bit` (12GB RAM)
-- `deepseek-ai/deepseek-coder-6.7b-instruct` (8GB RAM)
+Example model configurations are provided in `config.json`. Use `helper_tools/mlx_downloader.py` to download these models to your local directory before starting the server.
 
 ### Model Directory Structure
 
@@ -120,8 +119,8 @@ The router supports multiple chat template formats:
 - `qwen`: Qwen models with `<|im_start|>` format  
 - `phi4`: Phi-4 models with `<|user|>/<|assistant|>` format
 - `generic`: Fallback template
-
-![mlx-router-health-api](images/mlx-router-health-api.png)
+- `chatml`: OpenAI ChatML format
+- `gpt-oss`: GPT-OSS models with custom format
 
 ## Prerequisites
 
@@ -246,6 +245,8 @@ Once installed as a user service, MLX Router runs automatically and can be acces
 curl -s http://localhost:8800/health | jq
 ```
 
+![mlx-router-health-api](images/mlx-router-health-api.png)
+
 ### Access Points
 
 The server will start on `http://0.0.0.0:8800` by default.
@@ -333,8 +334,122 @@ curl -s -X POST http://localhost:8800/v1/chat/completions \
 
 **Health Check:**
 ```bash
-curl -s http://localhost:8800/health | jq
+curl -s http://localhost:8800/v1/health | jq
 ```
+
+## Vision Model Support
+
+MLX Router supports vision/multimodal models for processing images and PDFs using the OpenAI-compatible multimodal content format. This feature uses [mlx-vlm](https://github.com/Blaizzy/mlx-vlm) for vision model inference.
+
+### Supported Input Types
+
+- **Images**: PNG, JPEG, WebP, BMP (via base64 data URI)
+- **PDFs**: Automatically converted to images (requires `poppler`)
+
+### Prerequisites
+
+For PDF support, install `poppler`:
+
+```bash
+# macOS (Homebrew)
+brew install poppler
+```
+
+### Configuration
+
+Add `"supports_vision": true` to your model configuration:
+
+```json
+{
+  "models": {
+    "mlx-community/chandra-8bit": {
+      "max_tokens": 8192,
+      "temp": 0.7,
+      "chat_template": "generic",
+      "required_memory_gb": 4,
+      "supports_tools": false,
+      "supports_vision": true
+    }
+  }
+}
+```
+
+### Example: Image OCR
+
+```bash
+# Encode image to base64 and send request
+IMAGE_BASE64=$(base64 -i /path/to/image.png)
+curl -s -X POST http://localhost:8800/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/chandra-8bit",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "data:image/png;base64,'"$IMAGE_BASE64"'"
+            }
+          },
+          {
+            "type": "text",
+            "text": "OCR this image and extract all text"
+          }
+        ]
+      }
+    ],
+    "max_tokens": 2048,
+    "stream": false
+  }' | jq
+```
+
+### Example: PDF OCR
+
+```bash
+# Encode PDF to base64 and send request
+PDF_BASE64=$(base64 -i /path/to/document.pdf)
+curl -s -X POST http://localhost:8800/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/chandra-8bit",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "data:application/pdf;base64,'"$PDF_BASE64"'"
+            }
+          },
+          {
+            "type": "text",
+            "text": "OCR this document"
+          }
+        ]
+      }
+    ],
+    "max_tokens": 4096,
+    "stream": false
+  }' | jq
+```
+
+### Tested Models
+
+- **[mlx-community/chandra-8bit](https://huggingface.co/mlx-community/chandra-8bit)** - High-accuracy OCR model based on Qwen3-VL, excellent for document text extraction
+
+Other mlx-vlm compatible vision models should also work (e.g., LLaVA, Qwen-VL variants).
+
+### Client Integration
+
+Vision features have been tested with:
+- **curl** - Direct API calls (examples above)
+- **OpenWebUI** - Web interface with image upload support
+- **Python requests** - Programmatic access via test scripts
+
+For a complete test script, see `tests/test_vision_model.py`.
 
 ## Configuration
 
@@ -404,6 +519,7 @@ Per-model configuration. Each model entry uses the model ID as key:
 | `reasoning_response` | string | No | "enable" or "disable" - for models with reasoning output (e.g., GPT-OSS, Phi-4) |
 | `required_memory_gb` | float | Yes | RAM required to load the model |
 | `supports_tools` | bool | No | Whether model supports function calling |
+| `supports_vision` | bool | No | Whether model supports image/PDF input (requires mlx-vlm) |
 | `memory_pressure_max_tokens` | object | No | Token limits per pressure level (see below) |
 
 #### `memory_pressure_max_tokens` Object
@@ -739,7 +855,7 @@ MLX Router's OpenAI-compatible API enables seamless integration with popular age
 - 🌊 **Streaming support** - Real-time token delivery for responsive UX
 - 🔧 **Function calling** - Tool integration for advanced agent workflows
 
-For comprehensive setup guides and examples, see **[AGENTS.md](AGENTS.md)**
+For comprehensive setup guides and examples, see **[AGENTS_INTEGRATION.md](AGENTS_INTEGRATION.md)**
 
 **Supported Frameworks:**
 - **Microsoft Semantic Kernel** - Native OpenAI connector integration with streaming and tools
@@ -747,26 +863,6 @@ For comprehensive setup guides and examples, see **[AGENTS.md](AGENTS.md)**
 - **LangChain** - Chat model integration with chains, agents, streaming, and tools
 - **OpenWebUI** - Web interface for local LLM interactions with streaming support
 - **Goose** - AI-powered developer assistant for terminal environments
-
-## What's New in v2.1.2
-
-**📁 Custom Model Directory Loading**
-- **Local Model Support** - Load models from any local directory (default: `$HOME/models`)
-- **Automatic Discovery** - Models placed in configured directory are automatically detected
-- **Dynamic Configuration** - Model parameters extracted from local `config.json` files
-- **HuggingFace Cache Compatible** - Supports both direct directories and HF cache naming
-- **Environment Variable Support** - `MLX_MODEL_DIR` for custom directory configuration
-- **Hot-Swapping** - Switch between local models without server restart
-
-## What's New in v2.1.3
-
-**🌊 Enhanced Response Streaming**
-- **Multiple streaming formats** - Choose between SSE, JSON Lines, or JSON Array formats
-- **Goose/OpenWebUI compatibility** - JSON Array format works with clients that use `response.json()`
-- **Real-time token delivery** - 90%+ reduction in time-to-first-token
-- **Server-Sent Events** - OpenAI-compatible streaming format (default)
-- **Async generators** - Non-blocking streaming with FastAPI
-- **Memory efficient** - Reduced peak memory usage during generation
 
 ### Streaming Format Configuration
 

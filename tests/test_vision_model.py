@@ -39,6 +39,7 @@ import base64
 import json
 import logging
 import os
+import sys
 import requests
 
 from PIL import Image as PILImage
@@ -53,14 +54,14 @@ DEFAULT_API_URL = "http://localhost:8800/v1/chat/completions"
 DEFAULT_API_KEY = "dummy-key"
 
 
-def encode_image_to_base64(image_path):
-    """Encode an image file to base64 data URI format"""
+def encode_file_to_base64(file_path):
+    """Encode an image or PDF file to base64 data URI format"""
     try:
-        with open(image_path, "rb") as f:
-            image_data = f.read()
-            base64_data = base64.b64encode(image_data).decode("utf-8")
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+            base64_data = base64.b64encode(file_data).decode("utf-8")
 
-        ext = os.path.splitext(image_path)[1].lower()
+        ext = os.path.splitext(file_path)[1].lower()
         if ext == ".png":
             mime_type = "image/png"
         elif ext in [".jpg", ".jpeg"]:
@@ -69,17 +70,24 @@ def encode_image_to_base64(image_path):
             mime_type = "image/webp"
         elif ext == ".bmp":
             mime_type = "image/bmp"
+        elif ext == ".pdf":
+            mime_type = "application/pdf"
+            logger.info("PDF file detected - server will convert to images")
         else:
             mime_type = "image/png"
 
         return f"data:{mime_type};base64,{base64_data}"
 
     except FileNotFoundError:
-        logger.error(f"Image file not found: {image_path}")
+        logger.error(f"File not found: {file_path}")
         raise
     except Exception as e:
-        logger.error(f"Error encoding image: {e}")
+        logger.error(f"Error encoding file: {e}")
         raise
+
+
+# Keep old function name for backwards compatibility
+encode_image_to_base64 = encode_file_to_base64
 
 
 def create_test_image():
@@ -136,7 +144,8 @@ def send_chat_request(api_url, api_key, image_base64, text_prompt):
                 }
             ],
             "max_tokens": 512,
-            "temperature": 0.7
+            "temperature": 0.7,
+            "stream": False
         }
 
         logger.info(f"Sending request to {api_url}")
@@ -192,36 +201,36 @@ def main():
             assistant_message = response["choices"][0]["message"]["content"]
             logger.info(f"\nAssistant Response:\n{assistant_message}")
 
-        logger.info("\n" + "=" * 60)
-        logger.info("Config.json entry for Chandra-8bit:")
-        logger.info("=" * 60)
-        config_example = {
-            "models": {
-                "mlx-community/chandra-8bit": {
-                    "max_tokens": 8192,
-                    "temp": 0.7,
-                    "top_p": 0.9,
-                    "top_k": 50,
-                    "min_p": 0.05,
-                    "chat_template": "generic",
-                    "required_memory_gb": 4,
-                    "supports_tools": False,
-                    "memory_pressure_max_tokens": {
-                        "normal": 8192,
-                        "moderate": 4096,
-                        "high": 2048,
-                        "critical": 1024
-                    }
-                }
-            }
-        }
-        logger.info(json.dumps(config_example, indent=2))
-        logger.info("=" * 60)
+        # logger.info("\n" + "=" * 60)
+        # logger.info("Config.json entry for Chandra-8bit:")
+        # logger.info("=" * 60)
+        # config_example = {
+        #     "models": {
+        #         "mlx-community/chandra-8bit": {
+        #             "max_tokens": 8192,
+        #             "temp": 0.7,
+        #             "top_p": 0.9,
+        #             "top_k": 50,
+        #             "min_p": 0.05,
+        #             "chat_template": "generic",
+        #             "required_memory_gb": 4,
+        #             "supports_tools": False,
+        #             "memory_pressure_max_tokens": {
+        #                 "normal": 8192,
+        #                 "moderate": 4096,
+        #                 "high": 2048,
+        #                 "critical": 1024
+        #             }
+        #         }
+        #     }
+        # }
+        # logger.info(json.dumps(config_example, indent=2))
+        # logger.info("=" * 60)
 
-        logger.info("\nTo use this model:")
-        logger.info("1. Add the above config to your config.json")
-        logger.info("2. Ensure Chandra-8bit is available in your model directory")
-        logger.info("3. Restart MLX Router if needed")
+        # logger.info("\nTo use this model:")
+        # logger.info("1. Add the above config to your config.json")
+        # logger.info("2. Ensure Chandra-8bit is available in your model directory")
+        # logger.info("3. Restart MLX Router if needed")
 
     except Exception as e:
         logger.error(f"Error during test: {e}", exc_info=True)

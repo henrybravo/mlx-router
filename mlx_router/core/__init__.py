@@ -18,7 +18,10 @@ from mlx_router.core.content import (
     MessageContent,
     ContentPart,
     normalize_message_content,
+    extract_images_from_content,
     decode_base64_image,
+    decode_base64_to_images,
+    convert_pdf_to_images,
     fetch_image_from_url,
     preprocess_image_for_vision,
 )
@@ -42,7 +45,10 @@ __all__ = [
     'MessageContent',
     'ContentPart',
     'normalize_message_content',
+    'extract_images_from_content',
     'decode_base64_image',
+    'decode_base64_to_images',
+    'convert_pdf_to_images',
     'fetch_image_from_url',
     'preprocess_image_for_vision',
     # Manager

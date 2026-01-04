@@ -9,3 +9,6 @@ fastapi[all]>=0.115.0
 jsonschema>=4.0.0
 pillow>=10.0.0
 requests>=2.31.0
+torch>=2.0.0
+torchvision>=0.15.0
+pdf2image>=1.16.0  # for PDF to image conversion in vision models

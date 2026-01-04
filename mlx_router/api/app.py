@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, validator
 
 from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.resource_monitor import ResourceMonitor
-from mlx_router.core.content import MessageContent, normalize_message_content
+from mlx_router.core.content import MessageContent, normalize_message_content, extract_images_from_content
 from mlx_router.core.manager import MLXModelManager
 from mlx_router.__version__ import VERSION
 
@@ -67,7 +67,7 @@ class ChatCompletionRequest(BaseModel):
                 raise ValueError("message role must be 'system', 'user', or 'assistant'")
         return v
 
-def normalize_request_messages(messages: List[ChatMessage], model_id: str) -> List[Dict[str, str]]:
+def normalize_request_messages(messages: List[ChatMessage], model_id: str) -> tuple[List[Dict[str, str]], List[str]]:
     """
     Normalize all message contents from array/string format to string format.
 
@@ -79,21 +79,29 @@ def normalize_request_messages(messages: List[ChatMessage], model_id: str) -> Li
         model_id: Model ID for capability detection
 
     Returns:
-        List of dict with role and normalized string content
+        Tuple of (normalized messages list, list of image URLs/base64 data)
     """
     normalized = []
-    support_vision = any(keyword.lower() in model_id.lower() for keyword in VISION_ENABLED_MODELS)
+    all_images = []
+    # Check config first for explicit supports_vision setting, then fall back to keyword detection
+    model_config = ModelConfig.get_config(model_id)
+    support_vision = model_config.get("supports_vision", False) or \
+        any(keyword.lower() in model_id.lower() for keyword in VISION_ENABLED_MODELS)
 
     for msg in messages:
         try:
             content_str = normalize_message_content(msg.content, support_vision=support_vision)
             normalized.append({"role": msg.role, "content": content_str})
+            # Extract images from this message
+            if support_vision:
+                images = extract_images_from_content(msg.content)
+                all_images.extend(images)
         except (ValueError, TypeError) as e:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid message content: {str(e)}"
             )
-    return normalized
+    return normalized, all_images
 
 model_manager = None
 
@@ -139,7 +147,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
     request_id = hashlib.md5(f"{time.time()}{request.model}".encode()).hexdigest()[:12]
     logger.info(f"ReqID-{request_id}: Received chat request for model '{request.model}'")
 
-    normalized_messages = normalize_request_messages(request.messages, request.model)
+    normalized_messages, images = normalize_request_messages(request.messages, request.model)
 
     # Determine streaming mode early for error handling
     if request.stream is not None:
@@ -226,7 +234,8 @@ async def create_chat_completion(request: ChatCompletionRequest):
                         request.temperature,
                         request.top_p,
                         request.top_k,
-                        getattr(request, 'min_p', None)
+                        getattr(request, 'min_p', None),
+                        images=images
                     ):
                         if token.startswith("ERROR:"):
                             # Handle error
@@ -285,7 +294,8 @@ async def create_chat_completion(request: ChatCompletionRequest):
                         request.temperature,
                         request.top_p,
                         request.top_k,
-                        getattr(request, 'min_p', None)
+                        getattr(request, 'min_p', None),
+                        images=images
                     ):
                         if token.startswith("ERROR:"):
                             # Handle error in stream
@@ -406,7 +416,8 @@ async def create_chat_completion(request: ChatCompletionRequest):
             request.temperature,
             request.top_p,
             request.top_k,
-            getattr(request, 'min_p', None)
+            getattr(request, 'min_p', None),
+            images
         )
         
         # Handle different response types
