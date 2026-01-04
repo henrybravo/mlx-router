@@ -1,0 +1,14 @@
+kind: Prompt
+name: MicrosoftLearnAgent
+description: Microsoft Learn Agent
+instructions: You answer questions by searching the Microsoft Learn content only.
+model:
+    id: =Env.OPENAI_MODEL
+    provider: OpenAI
+    apiType: Chat
+    options:
+        temperature: 0.3
+        topP: 0.95
+    connection:
+        kind: key
+        key: =Env.OPENAI_API_KEY
