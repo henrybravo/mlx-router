@@ -33,3 +33,21 @@
   - HuggingFace cache compatible - Supports both direct directories and HF cache naming
   - Environment variable support - `MLX_MODEL_DIR` for custom directory configuration
   - Hot-swapping - Switch between local models without server restart
+
+## [v2.0.0] - 2025-06-15
+
+### Added
+- **🔧 Function Calling**
+  - **OpenAI-compatible** - Full compliance with function calling API
+  - **Prompt engineering** - Tool instructions injected into model prompts
+  - **JSON parsing** - Robust extraction and validation of tool calls
+  - **Schema validation** - Tool arguments validated against provided schemas
+  - **Error resilience** - Graceful fallback to text responses
+
+- **🚀 Major Improvements**
+  - **FastAPI Integration** - Modern async API framework with automatic documentation
+  - **Modular Architecture** - Clean separation into config/, core/, and api/ modules
+  - **Enhanced Error Handling** - Comprehensive HTTP status codes and error responses
+  - **Interactive Documentation** - Built-in Swagger UI and ReDoc interfaces
+  - **Improved Performance** - Async request handling and optimized memory management
+  - **Better Monitoring** - Enhanced health endpoints with detailed system metrics

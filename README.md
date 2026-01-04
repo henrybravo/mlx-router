@@ -601,138 +601,17 @@ Dynamic token limits based on system memory pressure:
 }
 ```
 
-### Memory Pressure Management
+### Streaming Format Configuration
 
-Memory pressure management is a critical feature in MLX Router that enables efficient operation on Apple Silicon systems with varying amounts of RAM. This system prevents system instability by dynamically adjusting model behavior based on current memory usage.
+MLX Router supports three streaming formats for maximum client compatibility:
 
-#### What is Memory Pressure?
+| Format | Configuration | Best For | Response Type |
+|--------|---------------|----------|---------------|
+| **SSE** (default) | `"streaming_format": "sse"` | curl, Python requests, OpenWebUI, Goose | `data: {json}\n\n...` |
+| **JSON Lines** | `"streaming_format": "json_lines"` | Advanced clients | `{json}\n{json}\n...` |
+| **JSON Array** | `"streaming_format": "json_array"` | Goose, OpenWebUI | `{"object": "chat.completion", "choices": [...]}` |
 
-Memory pressure refers to the strain placed on a system's RAM and swap resources. In the context of MLX Router, memory pressure monitoring prevents system instability by:
-
-- **Preventing model loading failures** when insufficient RAM is available
-- **Adjusting token limits dynamically** based on current memory usage
-- **Maintaining system responsiveness** during model inference
-- **Optimizing performance** across different Apple Silicon configurations
-
-#### Memory Pressure Levels
-
-MLX Router classifies memory pressure into four levels based on available memory and swap usage:
-
-**Memory-based thresholds** (compared to `memory_threshold_gb`):
-- **`normal`**: Available memory ≥ `memory_threshold_gb` (e.g., ≥80GB)
-- **`moderate`**: Available memory ≥ `memory_threshold_gb * 0.8` (e.g., ≥64GB)
-- **`high`**: Available memory ≥ `memory_threshold_gb * 0.6` (e.g., ≥48GB)
-- **`critical`**: Available memory < `memory_threshold_gb * 0.6` (e.g., <48GB)
-
-**Swap-based thresholds** (configurable via `swap_critical_percent` and `swap_high_percent`):
-- **`critical`**: Swap usage > `swap_critical_percent` (default: 90%)
-- **`high`**: Swap usage > `swap_high_percent` (default: 75%)
-
-Memory pressure is determined by the worst condition (highest pressure level) from both memory and swap thresholds.
-
-#### Memory Monitoring Components
-
-The system monitors several key metrics:
-
-- **Total/Available/Free RAM**: Basic memory statistics
-- **Swap Usage**: Virtual memory utilization
-- **Memory Fragmentation**: Calculated score (0-100) indicating memory efficiency
-- **Safety Margins**: Multipliers applied to required memory calculations
-
-#### Dynamic Token Limits
-
-Each model can have different `max_tokens` limits based on memory pressure:
-
-```json
-"memory_pressure_max_tokens": {
-  "normal": 16384,
-  "moderate": 8192,
-  "high": 4096,
-  "critical": 2048
-}
-```
-
-When memory pressure increases, the system automatically reduces token limits to prevent memory exhaustion during generation.
-
-#### System-Specific Configuration Examples
-
-**16GB RAM Systems (MacBook Air/Pro base models):**
-```json
-{
-  "defaults": {
-    "memory_threshold_gb": 12.0,
-    "swap_critical_percent": 95.0,
-    "swap_high_percent": 85.0
-  },
-  "models": {
-    "mlx-community/Llama-3.2-3B-Instruct-4bit": {
-      "required_memory_gb": 4,
-      "max_tokens": 4096,
-      "memory_pressure_max_tokens": {
-        "normal": 4096,
-        "moderate": 2048,
-        "high": 1024,
-        "critical": 512
-      }
-    }
-  }
-}
-```
-
-**32GB RAM Systems (MacBook Pro, Mac Mini):**
-```json
-{
-  "defaults": {
-    "memory_threshold_gb": 24.0,
-    "swap_critical_percent": 95.0,
-    "swap_high_percent": 85.0
-  },
-  "models": {
-    "mlx-community/Qwen3-30B-A3B-8bit": {
-      "required_memory_gb": 18,
-      "max_tokens": 8192,
-      "memory_pressure_max_tokens": {
-        "normal": 8192,
-        "moderate": 4096,
-        "high": 2048,
-        "critical": 1024
-      }
-    }
-  }
-}
-```
-
-**64GB+ RAM Systems (Mac Studio, high-end Mac Pro):**
-```json
-{
-  "defaults": {
-    "memory_threshold_gb": 48.0,
-    "swap_critical_percent": 99.0,
-    "swap_high_percent": 90.0
-  },
-  "models": {
-    "mlx-community/Llama-3.3-70B-Instruct-4bit": {
-      "required_memory_gb": 35,
-      "max_tokens": 12288,
-      "memory_pressure_max_tokens": {
-        "normal": 12288,
-        "moderate": 8192,
-        "high": 4096,
-        "critical": 2048
-      }
-    }
-  }
-}
-```
-
-#### Best Practices
-
-1. **Monitor Memory Usage**: Use `/health` endpoint to track memory pressure levels
-2. **Choose Appropriate Models**: Don't load models requiring more than 80% of available RAM
-3. **Configure Token Limits**: Set conservative limits for memory-constrained systems
-4. **Watch Fragmentation**: High fragmentation scores (>70) indicate memory inefficiency
-
-For comprehensive memory pressure management details, see the [Memory Pressure Tutorial](https://github.com/henrybravo/mlx-router/blob/main/docs/memory-pressure-tutorial.md).
+**SSE is the OpenAI standard** - most clients (OpenWebUI, Python openai lib, etc.) expect it by default and I recommend using it unless your client and LLM require a different format.
 
 ### Model Directory Configuration
 
@@ -740,6 +619,12 @@ For comprehensive memory pressure management details, see the [Memory Pressure T
 - **Environment Variable**: `MLX_MODEL_DIR` can override the config setting
 - **Automatic Discovery**: Models placed in this directory are automatically detected
 - **HuggingFace Cache Format**: Supports both direct directories and HF cache naming (`models--org--model`)
+
+## Memory Pressure Management
+
+Memory pressure management is a critical feature in MLX Router that enables efficient operation on Apple Silicon systems with varying amounts of RAM. This system prevents system instability by dynamically adjusting model behavior based on current memory usage.
+
+Read more about memory pressure management in the [MEMORY_PRESSURE.md](MEMORY_PRESSURE.md) document.
 
 ## Logging
 
@@ -858,37 +743,27 @@ launchctl load ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 - **Invalid config format**: Validate JSON syntax with `python -m json.tool ~/mlx_router_app/config.json`
 - **Memory-related crashes**: MLX memory errors automatically trigger service restart (production mode)
 - **Frequent crashes**: Check error logs for patterns and ensure sufficient system memory for models
+- **High memory pressure**: Adjust model parameters or reduce max_tokens in config
+- **stream chunk_size too large**: Reduce `stream_chunk_size` in config for lower latency
+- **stream chunk_size too small**: Increase `stream_chunk_size` for better throughput - Goose does not work well with very small chunks
+- **LLM behavior issues**: Adjust temperature, top_p, and top_k settings in model config or test with different models
+- **safety_margin**: can be 0.2 to 1.5 - higher values use more memory but reduce OOM risk
+- **memory_threshold_gb**: set according to system RAM - lower values trigger pressure adjustments sooner
+- **swap_critical_percent** and **swap_high_percent**: adjust based on system swap usage patterns, higher values delay pressure triggers
+- **streaming_format**: ensure client compatibility with selected format (sse, json_lines, json_array) but sse is recommended for most clients
+- **function calling issues**: ensure `enable_function_calling` is true and model supports it
+- **vision model issues**: ensure `supports_vision` is true and mlx-vlm is installed for image/PDF processing
+- **poppler not found**: install poppler for PDF support (e.g., `brew install poppler` on macOS)
+- **model not found**: ensure model is downloaded to the configured model directory
+- **insufficient memory**: reduce model size or max_tokens, or increase system RAM/swap
+- **log files not found**: verify installation directory and log paths
+- **crash recovery not working**: ensure service is installed with launchd and check logs for errors
+- **service restart loops**: check error logs for root cause, may indicate insufficient memory or config issues
+- **warmup tokens causing delays**: reduce `warmup_tokens` in config for faster startup at the cost of initial latency
 
 ## Agent Framework Integration
 
 MLX Router's OpenAI-compatible API enables seamless integration with popular agent frameworks and AI applications: for comprehensive setup guides and examples, see **[AGENTS_INTEGRATION.md](AGENTS_INTEGRATION.md)**
-
-## Streaming Format Configuration
-
-MLX Router supports three streaming formats for maximum client compatibility:
-
-| Format | Configuration | Best For | Response Type |
-|--------|---------------|----------|---------------|
-| **SSE** (default) | `"streaming_format": "sse"` | curl, Python requests, OpenWebUI, Goose | `data: {json}\n\n...` |
-| **JSON Lines** | `"streaming_format": "json_lines"` | Advanced clients | `{json}\n{json}\n...` |
-| **JSON Array** | `"streaming_format": "json_array"` | Goose, OpenWebUI | `{"object": "chat.completion", "choices": [...]}` |
-
-**SSE is the OpenAI standard** - most clients (OpenWebUI, Python openai lib, etc.) expect it by default and I recommend using it unless your client and LLM require a different format.
-
-**🔧 Function Calling**
-- **OpenAI-compatible** - Full compliance with function calling API
-- **Prompt engineering** - Tool instructions injected into model prompts
-- **JSON parsing** - Robust extraction and validation of tool calls
-- **Schema validation** - Tool arguments validated against provided schemas
-- **Error resilience** - Graceful fallback to text responses
-
-**Previous v2.0 Features:**
-- **FastAPI Integration** - Modern async API framework with automatic documentation
-- **Modular Architecture** - Clean separation into config/, core/, and api/ modules
-- **Enhanced Error Handling** - Comprehensive HTTP status codes and error responses
-- **Interactive Documentation** - Built-in Swagger UI and ReDoc interfaces
-- **Improved Performance** - Async request handling and optimized memory management
-- **Better Monitoring** - Enhanced health endpoints with detailed system metrics
 
 ## Contributing
 
