@@ -1,6 +1,21 @@
-# Agentic Integration with MLX Router v2.1.0
+# Agentic Integration with MLX Router
 
 MLX Router provides a locally running, OpenAI-compatible API server that can be integrated with popular agent frameworks. This document demonstrates how to connect various agentic systems to your local MLX models with full streaming and function calling support.
+
+- 🔒 **Complete data privacy** - All processing happens locally
+- ⚡ **GPU acceleration** - Apple Silicon optimized inference  
+- 🔄 **Hot-swappable models** - Switch models without restarting agents
+- 🛠️ **Drop-in replacement** - Works with any OpenAI-compatible client
+- 🌊 **Streaming support** - Real-time token delivery for responsive UX
+- 🔧 **Function calling** - Tool integration for advanced agent workflows
+
+**Supported Frameworks:**
+- **Microsoft Agent Framework** - Declarative agents with OpenAI-compatible interface
+- **Microsoft Semantic Kernel** - Native OpenAI connector integration with streaming and tools
+- **Strands** - Custom model provider with conversation memory and function calling
+- **LangChain** - Chat model integration with chains, agents, streaming, and tools
+- **OpenWebUI** - Web interface for local LLM interactions with streaming support
+- **Goose** - AI-powered developer assistant for terminal environments
 
 ## Core Integration Concept
 
@@ -22,6 +37,11 @@ MLX Router v2.1.0 now provides complete OpenAI API compatibility:
 All examples below have been updated to leverage these new capabilities.
 
 ## Framework Examples
+
+
+### Microsoft Agent Framework
+
+See the [Microsoft Agent Framework samples for mlx-router](agents/microsoft-agent-framework/README.md) for detailed setup and usage instructions.
 
 ### Microsoft Semantic Kernel Integration
 
@@ -692,6 +712,10 @@ When integrating any OpenAI-compatible client with MLX Router v2.1.0:
 ```
 
 #### Framework-Specific Notes
+
+**Microsoft Agent Framework:**
+- Use `stream=True` in agent configuration for streaming
+- Define tools in YAML declarations for function calling
 
 **Semantic Kernel:**
 - Use `get_streaming_chat_message_contents()` for streaming

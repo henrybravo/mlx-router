@@ -861,25 +861,9 @@ launchctl load ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 
 ## Agent Framework Integration
 
-MLX Router's OpenAI-compatible API enables seamless integration with popular agent frameworks and AI applications:
+MLX Router's OpenAI-compatible API enables seamless integration with popular agent frameworks and AI applications: for comprehensive setup guides and examples, see **[AGENTS_INTEGRATION.md](AGENTS_INTEGRATION.md)**
 
-- 🔒 **Complete data privacy** - All processing happens locally
-- ⚡ **GPU acceleration** - Apple Silicon optimized inference  
-- 🔄 **Hot-swappable models** - Switch models without restarting agents
-- 🛠️ **Drop-in replacement** - Works with any OpenAI-compatible client
-- 🌊 **Streaming support** - Real-time token delivery for responsive UX
-- 🔧 **Function calling** - Tool integration for advanced agent workflows
-
-For comprehensive setup guides and examples, see **[AGENTS_INTEGRATION.md](AGENTS_INTEGRATION.md)**
-
-**Supported Frameworks:**
-- **Microsoft Semantic Kernel** - Native OpenAI connector integration with streaming and tools
-- **Strands** - Custom model provider with conversation memory and function calling
-- **LangChain** - Chat model integration with chains, agents, streaming, and tools
-- **OpenWebUI** - Web interface for local LLM interactions with streaming support
-- **Goose** - AI-powered developer assistant for terminal environments
-
-### Streaming Format Configuration
+## Streaming Format Configuration
 
 MLX Router supports three streaming formats for maximum client compatibility:
 
