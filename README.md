@@ -624,7 +624,7 @@ MLX Router supports three streaming formats for maximum client compatibility:
 
 Memory pressure management is a critical feature in MLX Router that enables efficient operation on Apple Silicon systems with varying amounts of RAM. This system prevents system instability by dynamically adjusting model behavior based on current memory usage.
 
-Read more about memory pressure management in the [MEMORY_PRESSURE.md](MEMORY_PRESSURE.md) document.
+Read more about memory pressure management in the [MEMORY_PRESSURE.md](docs/MEMORY_PRESSURE.md) document.
 
 ## Logging
 
@@ -687,7 +687,7 @@ launchctl print gui/$(id -u)/com.henrybravo.mlx-router
 
 ## Installation Testing
 
-A comprehensive testing guide is available in `INSTALL_TEST.md`. For quick verification:
+A comprehensive testing guide is available in [INSTALL_TEST.md](docs/INSTALL_TEST.md). For quick verification:
 
 ```bash
 # Test system service installation
@@ -763,7 +763,7 @@ launchctl load ~/Library/LaunchAgents/com.henrybravo.mlx-router.plist
 
 ## Agent Framework Integration
 
-MLX Router's OpenAI-compatible API enables seamless integration with popular agent frameworks and AI applications: for comprehensive setup guides and examples, see **[AGENTS_INTEGRATION.md](AGENTS_INTEGRATION.md)**
+MLX Router's OpenAI-compatible API enables seamless integration with popular agent frameworks and AI applications: for comprehensive setup guides and examples, see **[AGENTS_INTEGRATION.md](docs/AGENTS_INTEGRATION.md)**
 
 ## Contributing
 
