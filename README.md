@@ -164,8 +164,10 @@ cd mlx-router
 pip install uv
 uv venv --python 3.11
 source .venv/bin/activate
-uv pip install -r requirements.txt
+uv pip install .
 ```
+
+`requirements.txt` is deprecated and kept only for temporary compatibility with older manual workflows.
 
 3. Start the server:
 ```bash
