@@ -174,7 +174,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
         await asyncio.to_thread(model_manager.load_model, request.model)
     except (ValueError, RuntimeError) as e:
         logger.error(f"ReqID-{request_id}: Model loading error: {e}")
-        error_message = str(e)
+        user_error_message = "The requested model is currently unavailable."
         if stream_mode:
             # Get streaming format from config for error response
             streaming_format = _global_config.get("defaults", {}).get("streaming_format", "sse")
@@ -186,7 +186,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
                     "model": request.model,
-                    "choices": [{"index": 0, "delta": {"content": f"ERROR: {error_message}"}, "finish_reason": "stop"}],
+                    "choices": [{"index": 0, "delta": {"content": f"ERROR: {user_error_message}"}, "finish_reason": "stop"}],
                 }
                 if streaming_format == "json_array":
                     yield json.dumps([error_chunk])
@@ -208,7 +208,13 @@ async def create_chat_completion(request: ChatCompletionRequest):
             # For non-streaming, return JSON error
             return JSONResponse(
                 status_code=400,
-                content={"error": {"message": error_message, "type": "model_load_error", "code": "model_unavailable"}},
+                content={
+                    "error": {
+                        "message": user_error_message,
+                        "type": "model_load_error",
+                        "code": "model_unavailable",
+                    }
+                },
             )
 
     model_manager.increment_request_count()
