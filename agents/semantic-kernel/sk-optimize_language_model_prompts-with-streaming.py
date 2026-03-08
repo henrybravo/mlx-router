@@ -15,7 +15,7 @@ mlx_server = "http://localhost:8800/v1"
 
 #mlx_model = "mlx-community/Llama-3.3-70B-Instruct-4bit"
 #mlx_model = "mlx-community/Qwen3-30B-A3B-8bit"
-mlx_model = "mlx-community/gpt-oss-120b-MXFP4-Q8"
+mlx_model = "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit"
 
 openAIClient = AsyncOpenAI(
     api_key="sk-key",  # Placeholder API key
