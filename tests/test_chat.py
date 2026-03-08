@@ -4,20 +4,13 @@ Test suite for OpenAI multimodal content format support (Phase 1: text-only)
 Tests string format, array format, and mixed content support
 """
 
-import sys
 import os
-import json
+import sys
 
 # Add project root to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-from mlx_router.core.content import (
-    normalize_message_content,
-    TextContentPart,
-    ImageUrlContentPart,
-    ImageUrlDetail,
-    MessageContent
-)
+from mlx_router.core.content import ImageUrlContentPart, ImageUrlDetail, TextContentPart, normalize_message_content
 
 
 class TestContentNormalization:

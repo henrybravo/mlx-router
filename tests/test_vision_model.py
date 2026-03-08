@@ -40,10 +40,9 @@ import json
 import logging
 import os
 import sys
-import requests
 
+import requests
 from PIL import Image as PILImage
-from PIL import ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -100,7 +99,7 @@ def create_test_image():
 
         try:
             font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 20)
-        except:
+        except Exception:
             font = ImageFont.load_default()
 
         draw.text((10, 30), "Test Image", fill="black", font=font)

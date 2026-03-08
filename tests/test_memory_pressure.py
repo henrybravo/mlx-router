@@ -3,16 +3,16 @@
 Test suite for memory pressure monitoring and management
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
-import sys
 import os
+import sys
+import unittest
+from unittest.mock import MagicMock, patch
 
 # Add the mlx_router package to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from mlx_router.core.resource_monitor import ResourceMonitor
 from mlx_router.config.model_config import ModelConfig
+from mlx_router.core.resource_monitor import ResourceMonitor
 
 
 class TestMemoryPressure(unittest.TestCase):
@@ -39,7 +39,7 @@ class TestMemoryPressure(unittest.TestCase):
         # Set test thresholds
         ResourceMonitor.set_memory_threshold_gb(80.0)
         ResourceMonitor.set_swap_thresholds(95.0, 85.0)  # Critical at 95%, high at 85%
-        print(f"Set thresholds: memory=80.0GB, swap_critical=95.0%, swap_high=85.0%")
+        print("Set thresholds: memory=80.0GB, swap_critical=95.0%, swap_high=85.0%")
 
         # Test data: 128GB system with 80GB threshold
         # Available memory = 128GB - used
@@ -121,7 +121,7 @@ class TestMemoryPressure(unittest.TestCase):
         # Set thresholds for this test
         ResourceMonitor.set_memory_threshold_gb(80.0)
         ResourceMonitor.set_swap_thresholds(95.0, 85.0)
-        print(f"Set thresholds: memory=80.0GB, swap_critical=95.0%, swap_high=85.0%")
+        print("Set thresholds: memory=80.0GB, swap_critical=95.0%, swap_high=85.0%")
 
         # With 62.5GB available and 0% swap, pressure should be "moderate" (62.5 < 64GB = 0.8*80)
         pressure = ResourceMonitor.get_memory_pressure()
