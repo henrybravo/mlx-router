@@ -53,7 +53,7 @@ Models are loaded from local directories (default: `$HOME/models`) with automati
 The checked-in `config.json` is intentionally minimal:
 
 - it keeps the public model path anonymized as `/Users/username/models`
-- it does not hardcode any specific models
+- it includes one sample model entry for `henrybravo/Qwen3.5-35B-A3B-4bit`
 - it relies on local model discovery from `model_directory`
 
 Download models into your local model directory with the helper tools, then restart the server and inspect `/v1/models` to see what is available.
@@ -157,6 +157,20 @@ Then start the server:
 
 ```bash
 mlx-router --config /path/to/config.json
+```
+
+The checked-in `config.json` includes one sample model entry for `henrybravo/Qwen3.5-35B-A3B-4bit` and an anonymized model path (`/Users/username/models`). Before starting the server:
+
+1. download or copy an MLX model into your local model directory (for example `models--henrybravo--Qwen3.5-35B-A3B-4bit`)
+2. update `model_directory` in your config to your real local path
+3. pass that config file to `mlx-router --config`
+
+You can use the helper tools in `helper_tools/` to prepare local models.
+
+**Logs in Option A:** when you run `mlx-router` directly from a shell, logs are written to stdout/stderr in that terminal. If you want persistent logs, redirect them yourself:
+
+```bash
+mlx-router --config /path/to/config.json 2>&1 | tee mlx-router.log
 ```
 
 ### Option B: Development Installation
@@ -604,7 +618,24 @@ Dynamic token limits based on system memory pressure:
       "port": 8800,
       "debug": false
   },
-  "models": {}
+  "models": {
+      "henrybravo/Qwen3.5-35B-A3B-4bit": {
+          "max_tokens": 16384,
+          "temp": 0.7,
+          "top_p": 0.9,
+          "top_k": 40,
+          "min_p": 0.05,
+          "chat_template": "qwen",
+          "required_memory_gb": 20,
+          "supports_tools": true,
+          "memory_pressure_max_tokens": {
+              "normal": 16384,
+              "moderate": 16384,
+              "high": 16384,
+              "critical": 16384
+          }
+      }
+  }
 }
 ```
 

@@ -19,5 +19,22 @@
         "port": 8800,
         "debug": false
     },
-    "models": {}
+    "models": {
+        "henrybravo/Qwen3.5-35B-A3B-4bit": {
+            "max_tokens": 16384,
+            "temp": 0.7,
+            "top_p": 0.9,
+            "top_k": 40,
+            "min_p": 0.05,
+            "chat_template": "qwen",
+            "required_memory_gb": 20,
+            "supports_tools": true,
+            "memory_pressure_max_tokens": {
+                "normal": 16384,
+                "moderate": 16384,
+                "high": 16384,
+                "critical": 16384
+            }
+        }
+    }
 }
