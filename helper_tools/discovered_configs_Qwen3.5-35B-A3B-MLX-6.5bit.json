@@ -1,0 +1,17 @@
+{
+    "inferencerlabs/Qwen3.5-35B-A3B-MLX-6.5bit": {
+        "max_tokens": 8192,
+        "temp": 0.7,
+        "top_p": 0.9,
+        "top_k": 40,
+        "min_p": 0.05,
+        "chat_template": null,
+        "required_memory_gb": 4,
+        "memory_pressure_max_tokens": {
+            "normal": 8192,
+            "moderate": 2048,
+            "high": 1024,
+            "critical": 512
+        }
+    }
+}
