@@ -253,7 +253,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, _shutdown)
     atexit.register(_shutdown)
 
-    if args.config and config_data.get("models"):
+    if args.config and (config_data.get("models") or ModelConfig.get_model_directory()):
         model_manager.refresh_available_models()
 
     set_model_manager(model_manager)
@@ -264,14 +264,17 @@ def main() -> None:
 
     # Preload default model
     default_model = config_data.get("default_model") or config_data.get("defaults", {}).get("model")
-    if not default_model and model_manager.available_models:
-        default_model = model_manager.available_models[0]
     if default_model:
         logger.info("Preloading default model: %s", default_model)
         try:
             model_manager.load_model(default_model)
         except (ValueError, RuntimeError) as exc:
             logger.warning("Failed to preload default model: %s", exc)
+    elif model_manager.available_models:
+        logger.info(
+            "Discovered %s available models. No default model configured; waiting for explicit selection.",
+            len(model_manager.available_models),
+        )
 
     print_banner()
     mem = ResourceMonitor.get_memory_info()

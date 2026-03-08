@@ -46,9 +46,15 @@ Models are loaded from local directories (default: `$HOME/models`) with automati
 - **Fallback Support**: Downloads any HuggingFace model to the custom directory if not found locally
 - **Cache Management**: Existing models in `~/.cache/huggingface/hub` can be symlinked to the custom directory
 
-### Currently Configured Models
+### Minimal Public Config
 
-Example model configurations are provided in `config.json`. Use `helper_tools/mlx_downloader.py` to download these models to your local directory before starting the server.
+The checked-in `config.json` is intentionally minimal:
+
+- it keeps the public model path anonymized as `/Users/username/models`
+- it does not hardcode any specific models
+- it relies on local model discovery from `model_directory`
+
+Download models into your local model directory with the helper tools, then restart the server and inspect `/v1/models` to see what is available.
 
 ### Model Directory Structure
 
@@ -67,7 +73,7 @@ $HOME/models/
         └── model.safetensors
 ```
 
-Use the `--config` argument to load additional model configurations from `config.json`.
+Use the `--config` argument to load additional model configurations from `config.json` when you want explicit per-model overrides.
 
 You can use the helper tools in `helper_tools/` directory:
 - `mlx_downloader.py` - Download MLX models to custom directories (supports `MLX_MODEL_DIR`)
@@ -494,10 +500,9 @@ For a complete test script, see `tests/test_vision_model.py`.
 ## Configuration
 
 The `config.json` file allows you to:
-- Define model-specific parameters (temperature, max_tokens, etc.)
 - Set memory pressure thresholds for different system states
 - Configure default values and operational settings
-- Add new models with custom chat templates
+- Add optional per-model overrides when auto-discovery is not enough
 
 ### Configuration Locations
 
@@ -531,7 +536,7 @@ Global settings that apply to all models unless overridden:
 | `streaming_format` | string | "sse" | Format: "sse", "json_lines", or "json_array" |
 | `warmup_tokens` | int | 5 | Tokens generated during model warmup |
 | `enable_function_calling` | bool | true | Enable tool/function calling support |
-| `model` | string | - | Default model to preload on startup |
+| `model` | string | - | Optional default model to preload on startup |
 | `model_directory` | string | "$HOME/models" | Path to local model storage |
 
 #### `server` Section
@@ -546,7 +551,7 @@ Network and server configuration:
 
 #### `models` Section
 
-Per-model configuration. Each model entry uses the model ID as key:
+Per-model configuration. Each model entry uses the model ID as key. This section is optional and can be empty if you want pure local auto-discovery.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -573,7 +578,7 @@ Dynamic token limits based on system memory pressure:
 | `high` | Token limit under high pressure |
 | `critical` | Token limit under critical pressure |
 
-### Example Configuration
+### Minimal Example Configuration
 
 ```json
 {
@@ -590,7 +595,6 @@ Dynamic token limits based on system memory pressure:
     "streaming_format": "sse",
     "warmup_tokens": 5,
     "enable_function_calling": true,
-    "model": "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit",
     "model_directory": "/Users/username/models"
   },
   "server": {
@@ -598,34 +602,32 @@ Dynamic token limits based on system memory pressure:
       "port": 8800,
       "debug": false
   },
+  "models": {}
+}
+```
+
+### Optional Per-Model Override Example
+
+```json
+{
   "models": {
-      "mlx-community/chandra-8bit": {
-          "max_tokens": 8192,
-          "temp": 0.7,
-          "top_p": 0.9,
-          "top_k": 50,
-          "min_p": 0.05,
-          "chat_template": "generic",
-          "required_memory_gb": 4,
-          "supports_tools": false,
-          "supports_vision": true
-      },
-      "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit": {
-          "max_tokens": 16384,
-          "temp": 0.7,
-          "top_p": 0.9,
-          "top_k": 40,
-          "min_p": 0.05,
-          "chat_template": "generic",
-          "reasoning_response": "enable",
-          "required_memory_gb": 40,
-          "memory_pressure_max_tokens": {
-                  "normal": 16384,
-                  "moderate": 16384,
-                  "high": 16384,
-                  "critical": 8192
-          }
-      },
+    "mlx-community/Qwen3.5-35B-A3B-8bit": {
+      "max_tokens": 16384,
+      "temp": 0.7,
+      "top_p": 0.9,
+      "top_k": 40,
+      "min_p": 0.05,
+      "chat_template": "qwen",
+      "required_memory_gb": 40,
+      "supports_tools": true,
+      "memory_pressure_max_tokens": {
+        "normal": 12288,
+        "moderate": 8192,
+        "high": 8192,
+        "critical": 4096
+      }
+    }
+  }
 }
 ```
 
@@ -647,6 +649,7 @@ MLX Router supports three streaming formats for maximum client compatibility:
 - **Environment Variable**: `MLX_MODEL_DIR` can override the config setting
 - **Automatic Discovery**: Models placed in this directory are automatically detected
 - **HuggingFace Cache Format**: Supports both direct directories and HF cache naming (`models--org--model`)
+- **No hardcoded public models required**: a minimal config works as long as your local model directory contains valid MLX model folders
 
 ## Memory Pressure Management
 
@@ -725,11 +728,11 @@ A comprehensive testing guide is available in [INSTALL_TEST.md](docs/INSTALL_TES
 curl -s http://localhost:8800/health | jq
 curl -s http://localhost:8800/v1/models | jq
 
-# Test chat completion
+# Test chat completion (replace with a model from /v1/models)
 curl -s -X POST http://localhost:8800/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit",
+    "model": "your-discovered-model-id",
     "messages": [{"role": "user", "content": "What existed first: the chicken or the egg?"}],
     "stream": false,
     "max_tokens": 1024
