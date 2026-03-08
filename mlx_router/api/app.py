@@ -186,7 +186,9 @@ async def create_chat_completion(request: ChatCompletionRequest):
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
                     "model": request.model,
-                    "choices": [{"index": 0, "delta": {"content": f"ERROR: {user_error_message}"}, "finish_reason": "stop"}],
+                    "choices": [
+                        {"index": 0, "delta": {"content": f"ERROR: {user_error_message}"}, "finish_reason": "stop"}
+                    ],
                 }
                 if streaming_format == "json_array":
                     yield json.dumps([error_chunk])
