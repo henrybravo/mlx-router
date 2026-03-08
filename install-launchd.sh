@@ -98,7 +98,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Check required files
 log_info "Checking required files..."
-REQUIRED_FILES=("mlx_router" "main.py" "requirements.txt" "config.json" "com.henrybravo.mlx-router.plist" "logs")
+REQUIRED_FILES=("mlx_router" "main.py" "pyproject.toml" "README.md" "config.json" "com.henrybravo.mlx-router.plist" "logs")
 for file in "${REQUIRED_FILES[@]}"; do
     if [[ ! -e "$SCRIPT_DIR/$file" ]]; then
         log_error "Required file not found: $file"
@@ -116,9 +116,13 @@ log_success "User directories created"
 
 # Copy files
 log_info "Copying application files..."
-cp -r "$SCRIPT_DIR/mlx_router" "$SCRIPT_DIR/main.py" "$SCRIPT_DIR/requirements.txt" "$SCRIPT_DIR/logs" "$INSTALL_DIR/"
+cp -r "$SCRIPT_DIR/mlx_router" "$SCRIPT_DIR/main.py" "$SCRIPT_DIR/pyproject.toml" "$SCRIPT_DIR/README.md" "$SCRIPT_DIR/logs" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/config.json" "$INSTALL_DIR/"
 log_success "Application files copied"
+
+if [[ -f "$SCRIPT_DIR/requirements.txt" ]]; then
+    log_warning "requirements.txt is deprecated; installer uses pyproject.toml as the dependency source of truth."
+fi
 
 # Create virtual environment
 log_info "Creating Python virtual environment..."
@@ -130,14 +134,11 @@ else
 fi
 log_success "Virtual environment created"
 
-# Install Python dependencies
-log_info "Installing Python dependencies..."
+log_info "Installing Python dependencies from pyproject.toml..."
 if [[ "$USE_UV" == true ]]; then
-    log_info "Installing dependencies with uv..."
-    # Use global uv with local cache to avoid permission issues
-    # Allow pre-releases for mlx-lm 0.30.0 which depends on transformers==5.0.0rc1
-    if ! uv --cache-dir "$INSTALL_DIR/.cache" pip install --prerelease=allow --python "$INSTALL_DIR/venv/bin/python" -r "$INSTALL_DIR/requirements.txt"; then
-        log_error "uv installation failed, falling back to pip"
+    log_info "Installing project with uv..."
+    if ! uv --cache-dir "$INSTALL_DIR/.cache" pip install --prerelease=allow --python "$INSTALL_DIR/venv/bin/python" "$INSTALL_DIR"; then
+        log_error "uv project installation failed, falling back to pip"
         USE_UV=false
     fi
 fi
@@ -146,8 +147,8 @@ if [[ "$USE_UV" == false ]]; then
     # Use standard pip with optimizations
     log_info "Upgrading pip..."
     "$INSTALL_DIR/venv/bin/pip" install --upgrade pip
-    log_info "Installing dependencies with pip..."
-    "$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
+    log_info "Installing project with pip..."
+    "$INSTALL_DIR/venv/bin/pip" install "$INSTALL_DIR"
 fi
 
 # Verify and fix critical dependencies
@@ -187,9 +188,8 @@ log_info "Testing main application imports..."
 if ! "$INSTALL_DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$INSTALL_DIR'); import main" 2>/dev/null; then
     log_error "main.py import test failed. Attempting to fix..."
 
-    # Try reinstalling all requirements as a last resort
-    log_info "Reinstalling all requirements..."
-    "$INSTALL_DIR/venv/bin/pip" install --force-reinstall -r "$INSTALL_DIR/requirements.txt"
+    log_info "Reinstalling project from pyproject.toml..."
+    "$INSTALL_DIR/venv/bin/pip" install --force-reinstall "$INSTALL_DIR"
 
     # Test again
     if ! "$INSTALL_DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$INSTALL_DIR'); import main" 2>/dev/null; then

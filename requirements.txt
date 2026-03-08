@@ -1,6 +1,9 @@
-mlx>=0.29.2
-mlx-lm>=0.30.0
-mlx-vlm>=0.3.9
+# DEPRECATED: pyproject.toml is the source of truth for package dependencies.
+# Keep this file only for temporary compatibility with older manual workflows.
+# Prefer: uv pip install .    or    pip install .
+mlx>=0.31.0
+mlx-lm>=0.31.0
+mlx-vlm>=0.4.0
 huggingface-hub>=1.2.0
 # mlx-audio>=0.2.0 - only install if you need tts, stt
 pyfiglet>=1.0.0

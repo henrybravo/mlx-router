@@ -17,7 +17,7 @@ async def main():
     # )
     mlx_model = MLXModel(
         base_url="http://localhost:8800/v1",
-        model_id="mlx-community/gpt-oss-120b-MXFP4-Q8",
+        model_id="mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit",
         api_key="strands-key",
         params={
             "max_tokens": 16384,

@@ -42,7 +42,7 @@ CHAT_TEMPLATES = {
     },
     'generic': {
         'prefix': '',
-        'role_format': '<|im_start|>{role}\n{content}<|im_end|>\n',  
+        'role_format': '<|im_start|>{role}\n{content}<|im_end|>\n',
         'assistant_start': '<|im_start|>assistant\n',
         'system_default': None
     }
@@ -51,10 +51,10 @@ CHAT_TEMPLATES = {
 def format_messages_test(messages, chat_template_name):
     """Test the new data-driven message formatting"""
     template = CHAT_TEMPLATES.get(chat_template_name, CHAT_TEMPLATES['generic'])
-    
+
     # Start with prefix
     prompt = template.get('prefix', '')
-    
+
     # Add system default if needed and no system message exists
     has_system = any(msg.get("role", "").lower() == "system" for msg in messages)
     if not has_system and template.get('system_default'):
@@ -62,15 +62,15 @@ def format_messages_test(messages, chat_template_name):
             prompt += template['system_format'].format(content=template['system_default'])
         else:
             prompt += template['system_default']
-    
+
     # Process messages
     for msg in messages:
         role = msg.get("role", "user").lower()
         content = msg.get("content", "").strip()
-        
+
         if not content and role != "system":
             continue
-        
+
         # Use role-specific format or generic role format
         role_format_key = f"{role}_format"
         if role_format_key in template:
@@ -80,10 +80,10 @@ def format_messages_test(messages, chat_template_name):
         elif chat_template_name == 'llama3':
             # Special handling for llama3 format
             prompt += template['role_start'].format(role=role) + content + template['role_end']
-    
+
     # Add assistant start
     prompt += template.get('assistant_start', '')
-    
+
     return prompt
 
 # Test all templates used in config.json

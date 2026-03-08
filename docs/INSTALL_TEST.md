@@ -10,7 +10,7 @@ echo "Installing to: $INSTALL_DIR"
 
 2. **Verify all files are present:**
 ```bash
-ls -la main.py config.json com.henrybravo.mlx-router.plist mlx_router/ requirements.txt
+ls -la main.py pyproject.toml README.md config.json com.henrybravo.mlx-router.plist mlx_router/
 ```
 
 3. **Check for existing installations:**

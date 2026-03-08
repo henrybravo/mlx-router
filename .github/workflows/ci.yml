@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "release/**", "feature/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Lint & style — runs on ubuntu (no MLX needed)
+  # -------------------------------------------------------------------------
+  lint:
+    name: Lint & Style
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install ruff
+        run: uv pip install ruff --system
+
+      - name: Ruff lint
+        run: ruff check mlx_router/ main.py
+
+      - name: Ruff format check
+        run: ruff format --check mlx_router/ main.py
+
+  # -------------------------------------------------------------------------
+  # Tests — must run on Apple Silicon (macos-14 = M1 runner)
+  # -------------------------------------------------------------------------
+  test:
+    name: Test (Python ${{ matrix.python-version }}, macOS)
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --system
+
+      - name: Create logs directory
+        run: mkdir -p logs
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ \
+            --cov=mlx_router \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -v \
+            --ignore=tests/test_vision_model.py \
+            --ignore=tests/test_models.sh
+        env:
+          MLX_MODEL_DIR: /tmp/models
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+
+  # -------------------------------------------------------------------------
+  # Build verification — ensure the wheel builds correctly
+  # -------------------------------------------------------------------------
+  build:
+    name: Build wheel
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build wheel and sdist
+        run: |
+          uv pip install hatchling --system
+          python -m hatchling build
+
+      - name: Verify wheel contents
+        run: |
+          uv pip install twine --system
+          twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

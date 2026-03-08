@@ -1,9 +1,12 @@
 # MLX Router
 
+[![PyPI](https://img.shields.io/pypi/v/mlx-router.svg)](https://pypi.org/project/mlx-router/)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/mlx-router.svg)](https://pypi.org/project/mlx-router/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![MLX](https://img.shields.io/badge/MLX-0.29.2%2B-orange.svg)](https://github.com/ml-explore/mlx)
-[![mlx--lm](https://img.shields.io/badge/mlx--lm-0.30.0%2B-orange.svg)](https://github.com/ml-explore/mlx-lm)
-[![mlx--vlm](https://img.shields.io/badge/mlx--vlm-0.3.9%2B-orange.svg)](https://github.com/Blaizzy/mlx-vlm)
+[![CI](https://github.com/henrybravo/mlx-router/actions/workflows/ci.yml/badge.svg)](https://github.com/henrybravo/mlx-router/actions/workflows/ci.yml)
+[![MLX](https://img.shields.io/badge/MLX-0.31.0%2B-orange.svg)](https://github.com/ml-explore/mlx)
+[![mlx--lm](https://img.shields.io/badge/mlx--lm-0.31.0%2B-orange.svg)](https://github.com/ml-explore/mlx-lm)
+[![mlx--vlm](https://img.shields.io/badge/mlx--vlm-0.4.0%2B-orange.svg)](https://github.com/Blaizzy/mlx-vlm)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115.0%2B-green.svg)](https://fastapi.tiangolo.com/)
 [![Hugging Face Hub](https://img.shields.io/badge/HF%20Hub-1.2.0%2B-yellow.svg)](https://huggingface.co/docs/huggingface_hub)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -130,7 +133,25 @@ The router supports multiple chat template formats:
 
 ## Installation
 
-### Development Installation
+### Option A: Install from PyPI (recommended)
+
+```bash
+pip install mlx-router
+```
+
+Or with uv:
+
+```bash
+uv pip install mlx-router
+```
+
+Then start the server:
+
+```bash
+mlx-router --config /path/to/config.json
+```
+
+### Option B: Development Installation
 
 1. Clone the repository:
 ```bash
@@ -143,12 +164,19 @@ cd mlx-router
 pip install uv
 uv venv --python 3.11
 source .venv/bin/activate
-uv pip install -r requirements.txt
+uv pip install .
 ```
 
-### System Service Installation (macOS)
+`requirements.txt` is deprecated and kept only for temporary compatibility with older manual workflows.
 
-For production deployment as a user service that starts automatically:
+3. Start the server:
+```bash
+python main.py --config config.json
+```
+
+### Option C: System Service Installation (macOS)
+
+For production deployment as a macOS launchd user service that starts automatically at login:
 
 **Prerequisites:**
 - macOS (Darwin-based system)

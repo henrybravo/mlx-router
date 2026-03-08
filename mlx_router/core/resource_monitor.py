@@ -3,15 +3,19 @@
 Resource monitoring for Apple Silicon optimization
 """
 
-import time
 import logging
+import time
+
 import psutil
+
 from mlx_router.config.model_config import ModelConfig
 
 logger = logging.getLogger(__name__)
 
+
 class ResourceMonitor:
     """Monitor system resources for Apple Silicon optimization"""
+
     _last_memory_check = 0
     _cached_memory_info = None
     _memory_cache_duration = 2.0
@@ -42,10 +46,13 @@ class ResourceMonitor:
     @staticmethod
     def get_memory_info(use_cache=True):
         current_time = time.time()
-        if (use_cache and ResourceMonitor._cached_memory_info and 
-            current_time - ResourceMonitor._last_memory_check < ResourceMonitor._memory_cache_duration):
+        if (
+            use_cache
+            and ResourceMonitor._cached_memory_info
+            and current_time - ResourceMonitor._last_memory_check < ResourceMonitor._memory_cache_duration
+        ):
             return ResourceMonitor._cached_memory_info
-        
+
         memory = psutil.virtual_memory()
         swap = psutil.swap_memory()
         memory_info = {
@@ -54,26 +61,30 @@ class ResourceMonitor:
             "used_gb": memory.used / (1024**3),
             "used_percent": memory.percent,
             "free_gb": memory.free / (1024**3),
-            "buffers_gb": getattr(memory, 'buffers', 0) / (1024**3),
-            "cached_gb": getattr(memory, 'cached', 0) / (1024**3),
+            "buffers_gb": getattr(memory, "buffers", 0) / (1024**3),
+            "cached_gb": getattr(memory, "cached", 0) / (1024**3),
             "swap_total_gb": swap.total / (1024**3),
             "swap_used_gb": swap.used / (1024**3),
             "swap_percent": swap.percent,
-            "fragmentation_score": ResourceMonitor._calculate_fragmentation_score(memory)
+            "fragmentation_score": ResourceMonitor._calculate_fragmentation_score(memory),
         }
         ResourceMonitor._cached_memory_info = memory_info
         ResourceMonitor._last_memory_check = current_time
         return memory_info
+
     @staticmethod
     def _calculate_fragmentation_score(memory):
         """Calculate a simple fragmentation score (0-100, lower is better)"""
         # Simple heuristic: high fragmentation when available memory is much less than free memory
-        if hasattr(memory, 'free') and memory.available > 0:
+        if hasattr(memory, "free") and memory.available > 0:
             # If available is much less than free, suggests fragmentation
-            fragmentation_ratio = 1.0 - (memory.available / max(memory.free + getattr(memory, 'buffers', 0) + getattr(memory, 'cached', 0), memory.available))
+            fragmentation_ratio = 1.0 - (
+                memory.available
+                / max(memory.free + getattr(memory, "buffers", 0) + getattr(memory, "cached", 0), memory.available)
+            )
             return min(100, max(0, fragmentation_ratio * 100))
         return 0  # Unable to calculate
-    
+
     @staticmethod
     def can_load_model(model_name, safety_margin=1.5, use_cache=True):
         """Unified method to check if a model can be loaded based on memory availability and pressure"""
@@ -93,7 +104,9 @@ class ResourceMonitor:
                 fragmentation_penalty = 1.15  # Small penalty
             else:
                 fragmentation_penalty = 1.2  # Standard penalty
-            logger.debug(f"Memory fragmentation detected ({info['fragmentation_score']:.1f}), applying {fragmentation_penalty}x penalty")
+            logger.debug(
+                f"Memory fragmentation detected ({info['fragmentation_score']:.1f}), applying {fragmentation_penalty}x penalty"
+            )
 
         effective_required *= fragmentation_penalty
 
@@ -102,11 +115,15 @@ class ResourceMonitor:
 
         # Apply pressure-based restrictions
         can_load = has_memory
-        reason = "Memory sufficient for loading" if has_memory else f"Insufficient memory (need {effective_required:.1f}GB, available {info['available_gb']:.1f}GB)"
+        reason = (
+            "Memory sufficient for loading"
+            if has_memory
+            else f"Insufficient memory (need {effective_required:.1f}GB, available {info['available_gb']:.1f}GB)"
+        )
 
         if pressure == "critical":
             if has_memory:
-                logger.warning(f"Critical pressure but sufficient memory available, allowing load")
+                logger.warning("Critical pressure but sufficient memory available, allowing load")
             else:
                 can_load = False
                 reason = f"Critical memory pressure ({info['used_percent']:.1f}%)"
@@ -133,11 +150,11 @@ class ResourceMonitor:
             logger.debug(reason)
 
         return can_load, {
-            'available_gb': info["available_gb"],
-            'required_gb': required_gb,
-            'effective_required': effective_required,
-            'fragmentation_penalty': fragmentation_penalty,
-            'reason': reason
+            "available_gb": info["available_gb"],
+            "required_gb": required_gb,
+            "effective_required": effective_required,
+            "fragmentation_penalty": fragmentation_penalty,
+            "reason": reason,
         }
 
     @staticmethod
@@ -145,6 +162,7 @@ class ResourceMonitor:
         """Check if sufficient memory is available for the specified model (legacy method)"""
         can_load, details = ResourceMonitor.can_load_model(model_name, safety_margin, use_cache)
         return can_load, details
+
     @staticmethod
     def get_memory_pressure():
         """Get memory pressure level for Apple Silicon optimization"""
@@ -167,21 +185,21 @@ class ResourceMonitor:
         # Normal: sufficient available memory
         else:
             return "normal"
-    
+
     @staticmethod
     def get_memory_pressure_max_tokens(model_name, pressure_level):
         """Get max tokens for current memory pressure level"""
         model_config = ModelConfig.get_config(model_name)
         pressure_tokens = model_config.get("memory_pressure_max_tokens", {})
-        
+
         if pressure_level in pressure_tokens:
             return pressure_tokens[pressure_level]
-        
+
         # Fallback to standard max_tokens if no pressure-specific config
         return model_config.get("max_tokens", 4096)
-    
+
     @classmethod
     def should_defer_model_load(cls, model_name):
         """Check if model loading should be deferred due to memory pressure"""
         can_load, details = cls.can_load_model(model_name, safety_margin=cls._safety_margin, use_cache=False)
-        return not can_load, details['reason']
+        return not can_load, details["reason"]
