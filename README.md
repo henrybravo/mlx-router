@@ -14,6 +14,8 @@
 
 An OpenAI-compatible inference server optimized for **Apple Silicon**. Hot-swap between MLX models, stream responses in real-time, process images and PDFs, and integrate with any OpenAI client.
 
+Published MLX models: https://huggingface.co/henrybravo
+
 ![mlx-router](images/mlx-router-help-menu.png)
 
 ## Features
