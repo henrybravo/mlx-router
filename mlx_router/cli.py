@@ -26,10 +26,10 @@ from mlx_router.config.model_config import ModelConfig
 from mlx_router.core.manager import MLXModelManager
 from mlx_router.core.resource_monitor import ResourceMonitor
 
-
 # ---------------------------------------------------------------------------
 # Log filters
 # ---------------------------------------------------------------------------
+
 
 class _InfoFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -86,6 +86,7 @@ def _setup_logging(debug: bool = False, log_dir: Path | None = None) -> None:
 # Banner
 # ---------------------------------------------------------------------------
 
+
 def print_banner() -> None:
     """Print the MLX Router ASCII-art banner."""
     banner = pyfiglet.figlet_format("mlx-router", font="slant")
@@ -99,11 +100,13 @@ def print_banner() -> None:
 # Argument parsing
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
     class _BannerFormatter(argparse.RawDescriptionHelpFormatter):
         def __init__(self, prog: str, **kwargs: object) -> None:
             try:
                 import shutil
+
                 width = min(shutil.get_terminal_size().columns, 120)
             except Exception:
                 width = 100
@@ -140,6 +143,7 @@ def _parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     """mlx-router entry point — invoked by the `mlx-router` CLI command."""
@@ -229,7 +233,9 @@ def main() -> None:
 
     logger.info(
         "Starting MLX Router v%s (%s) by %s — https://github.com/henrybravo/mlx-router",
-        VERSION, RELEASE_DATE, AUTHOR,
+        VERSION,
+        RELEASE_DATE,
+        AUTHOR,
     )
 
     model_manager = MLXModelManager(max_tokens=args.max_tokens, timeout=args.timeout)
@@ -253,6 +259,7 @@ def main() -> None:
     set_model_manager(model_manager)
 
     from mlx_router.api.app import set_global_config
+
     set_global_config(config_data)
 
     # Preload default model

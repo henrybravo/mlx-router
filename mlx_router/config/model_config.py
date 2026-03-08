@@ -8,9 +8,10 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
 
 class ModelConfig:
     """Model-specific configurations with support for local model directories"""
@@ -34,7 +35,7 @@ class ModelConfig:
             cls._model_directory = None
 
     @classmethod
-    def get_model_directory(cls) -> Optional[Path]:
+    def get_model_directory(cls) -> Path | None:
         """Get the configured model directory"""
         return cls._model_directory
 
@@ -76,7 +77,7 @@ class ModelConfig:
         return model_name
 
     @classmethod
-    def discover_local_models(cls) -> Dict[str, Dict[str, Any]]:
+    def discover_local_models(cls) -> dict[str, dict[str, Any]]:
         """Discover models in the configured local directory with caching"""
         if not cls._model_directory or not cls._model_directory.exists():
             return {}
@@ -84,9 +85,9 @@ class ModelConfig:
         # Check if cache is valid
         current_mtime = cls._get_directory_mtime(cls._model_directory)
         cache_valid = (
-            cls._discovery_cache is not None and
-            cls._discovery_cache_mtime == current_mtime and
-            time.time() - getattr(cls, '_discovery_cache_time', 0) < cls._discovery_cache_duration
+            cls._discovery_cache is not None
+            and cls._discovery_cache_mtime == current_mtime
+            and time.time() - getattr(cls, "_discovery_cache_time", 0) < cls._discovery_cache_duration
         )
 
         if cache_valid:
@@ -136,7 +137,7 @@ class ModelConfig:
             max_mtime = directory.stat().st_mtime
 
             # Check all files recursively (but limit depth for performance)
-            for item in directory.rglob('*'):
+            for item in directory.rglob("*"):
                 try:
                     item_mtime = item.stat().st_mtime
                     max_mtime = max(max_mtime, item_mtime)
@@ -148,7 +149,7 @@ class ModelConfig:
             return 0.0
 
     @classmethod
-    def _extract_model_config(cls, model_path: Path) -> Optional[Dict[str, Any]]:
+    def _extract_model_config(cls, model_path: Path) -> dict[str, Any] | None:
         """Extract configuration from a local model directory"""
         config_file = None
 
@@ -165,7 +166,8 @@ class ModelConfig:
         if config_file and config_file.exists():
             try:
                 import json
-                with open(config_file, 'r') as f:
+
+                with open(config_file) as f:
                     hf_config = json.load(f)
 
                 # Extract relevant parameters
@@ -177,7 +179,7 @@ class ModelConfig:
                     "min_p": 0.05,
                     "chat_template": cls._detect_chat_template(hf_config),
                     "required_memory_gb": cls._estimate_memory_requirement(hf_config),
-                    "path": str(model_path)
+                    "path": str(model_path),
                 }
 
                 # Add memory pressure settings
@@ -185,7 +187,7 @@ class ModelConfig:
                     "normal": config["max_tokens"],
                     "moderate": min(config["max_tokens"] // 2, 2048),
                     "high": min(config["max_tokens"] // 4, 1024),
-                    "critical": min(config["max_tokens"] // 8, 512)
+                    "critical": min(config["max_tokens"] // 8, 512),
                 }
 
                 return config
@@ -204,12 +206,7 @@ class ModelConfig:
                 "chat_template": "generic",
                 "required_memory_gb": 8,
                 "path": str(model_path),
-                "memory_pressure_max_tokens": {
-                    "normal": 4096,
-                    "moderate": 2048,
-                    "high": 1024,
-                    "critical": 512
-                }
+                "memory_pressure_max_tokens": {"normal": 4096, "moderate": 2048, "high": 1024, "critical": 512},
             }
 
         return None
@@ -217,14 +214,11 @@ class ModelConfig:
     @classmethod
     def _has_model_files(cls, model_path: Path) -> bool:
         """Check if directory contains model files"""
-        model_extensions = {'.safetensors', '.bin', '.pth', '.pt'}
-        return any(
-            file_path.is_file() and file_path.suffix in model_extensions
-            for file_path in model_path.rglob('*')
-        )
+        model_extensions = {".safetensors", ".bin", ".pth", ".pt"}
+        return any(file_path.is_file() and file_path.suffix in model_extensions for file_path in model_path.rglob("*"))
 
     @classmethod
-    def _detect_chat_template(cls, hf_config: Dict[str, Any]) -> str:
+    def _detect_chat_template(cls, hf_config: dict[str, Any]) -> str:
         """Detect chat template from HuggingFace config"""
         model_name = hf_config.get("_name_or_path", "").lower()
 
@@ -243,7 +237,7 @@ class ModelConfig:
         return "generic"
 
     @classmethod
-    def _estimate_memory_requirement(cls, hf_config: Dict[str, Any]) -> int:
+    def _estimate_memory_requirement(cls, hf_config: dict[str, Any]) -> int:
         """Estimate memory requirement based on model config"""
         model_name = hf_config.get("_name_or_path", "").lower()
 
@@ -279,8 +273,13 @@ class ModelConfig:
 
         # Fallback to defaults
         return {
-            "max_tokens": 4096, "temp": 0.7, "top_p": 0.9, "top_k": 40, "min_p": 0.05,
-            "chat_template": "generic", "required_memory_gb": 8
+            "max_tokens": 4096,
+            "temp": 0.7,
+            "top_p": 0.9,
+            "top_k": 40,
+            "min_p": 0.05,
+            "chat_template": "generic",
+            "required_memory_gb": 8,
         }
 
     @classmethod
