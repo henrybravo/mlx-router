@@ -1,5 +1,14 @@
 # Changelog
 
+## [v2.3.1] - 2026-03-08
+
+### Fixed
+- Prefer local model directories that contain actual weight files when resolving cache-style Hugging Face paths
+- Allow minimal public `config.json` files to rely on local model discovery without hardcoded model entries
+
+### Changed
+- Document minimal public configuration and helper-tool-based local model setup
+
 ## [v2.3.0] - 2026-01-04
 
 ### Added
