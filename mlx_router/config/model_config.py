@@ -8,7 +8,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class ModelConfig:
     # No more hard-coded models - configurations loaded dynamically
     MODELS = {}
     _model_directory = None
-    _discovery_cache = None
+    _discovery_cache: dict[str, dict[str, Any]] | None = None
     _discovery_cache_mtime = None
     _discovery_cache_duration = 300  # Cache for 5 minutes
 
@@ -51,30 +51,38 @@ class ModelConfig:
             # First try direct directory name
             model_path = cls._model_directory / model_name
             if model_path.exists():
-                # Look for the actual model files (could be in snapshots subdirectory)
-                if (model_path / "snapshots").exists():
-                    # HuggingFace-style structure
-                    snapshots = list((model_path / "snapshots").iterdir())
-                    if snapshots:
-                        return str(snapshots[0])  # Use latest snapshot
-                else:
-                    # Direct model directory
-                    return str(model_path)
+                local_load_path = cls._resolve_local_load_path(model_path)
+                if local_load_path:
+                    return str(local_load_path)
 
             # Try HuggingFace cache directory naming convention
             hf_cache_name = f"models--{model_name.replace('/', '--')}"
             hf_model_path = cls._model_directory / hf_cache_name
             if hf_model_path.exists():
-                # HuggingFace cache structure
-                if (hf_model_path / "snapshots").exists():
-                    snapshots = list((hf_model_path / "snapshots").iterdir())
-                    if snapshots:
-                        # Sort by modification time to get latest
-                        latest_snapshot = max(snapshots, key=lambda p: p.stat().st_mtime)
-                        return str(latest_snapshot)
+                local_load_path = cls._resolve_local_load_path(hf_model_path)
+                if local_load_path:
+                    return str(local_load_path)
 
         # Fall back to HuggingFace identifier
         return model_name
+
+    @classmethod
+    def _resolve_local_load_path(cls, model_path: Path) -> Path | None:
+        if cls._has_direct_model_files(model_path):
+            return model_path
+
+        snapshots_dir = model_path / "snapshots"
+        if snapshots_dir.exists():
+            snapshots = [snapshot for snapshot in snapshots_dir.iterdir() if snapshot.is_dir()]
+            snapshots.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+            for snapshot in snapshots:
+                if cls._has_direct_model_files(snapshot):
+                    return snapshot
+
+        if (model_path / "config.json").exists():
+            return model_path
+
+        return None
 
     @classmethod
     def discover_local_models(cls) -> dict[str, dict[str, Any]]:
@@ -82,17 +90,14 @@ class ModelConfig:
         if not cls._model_directory or not cls._model_directory.exists():
             return {}
 
-        # Check if cache is valid
         current_mtime = cls._get_directory_mtime(cls._model_directory)
-        cache_valid = (
+        if (
             cls._discovery_cache is not None
             and cls._discovery_cache_mtime == current_mtime
             and time.time() - getattr(cls, "_discovery_cache_time", 0) < cls._discovery_cache_duration
-        )
-
-        if cache_valid:
+        ):
             logger.debug("Using cached model discovery results")
-            return cls._discovery_cache
+            return cast(dict[str, dict[str, Any]], cls._discovery_cache)
 
         # Cache miss - perform discovery
         logger.info(f"Scanning model directory: {cls._model_directory}")
@@ -216,6 +221,11 @@ class ModelConfig:
         """Check if directory contains model files"""
         model_extensions = {".safetensors", ".bin", ".pth", ".pt"}
         return any(file_path.is_file() and file_path.suffix in model_extensions for file_path in model_path.rglob("*"))
+
+    @classmethod
+    def _has_direct_model_files(cls, model_path: Path) -> bool:
+        model_extensions = {".safetensors", ".bin", ".pth", ".pt"}
+        return any(file_path.is_file() and file_path.suffix in model_extensions for file_path in model_path.iterdir())
 
     @classmethod
     def _detect_chat_template(cls, hf_config: dict[str, Any]) -> str:
