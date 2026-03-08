@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mlx-router"
-version = "2.3.0"
+version = "2.3.1"
 description = "OpenAI-compatible inference server for Apple Silicon — hot-swap MLX models, stream responses, process images and PDFs."
 readme = "README.md"
 license = { text = "MIT" }
