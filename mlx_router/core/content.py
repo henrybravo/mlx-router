@@ -8,11 +8,10 @@ import base64
 import io
 import logging
 import re
-from typing import Union, List, Literal, Optional, Tuple
+from typing import Literal
 
 import requests
 from PIL import Image
-
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -20,35 +19,37 @@ logger = logging.getLogger(__name__)
 
 class ImageUrlDetail(BaseModel):
     """Image URL with optional detail level for vision models"""
+
     url: str = Field(description="URL or base64 data URI for image")
     detail: Literal["auto", "low", "high"] = Field(
-        default="auto",
-        description="Detail level: auto (default), low (speed), or high (quality)"
+        default="auto", description="Detail level: auto (default), low (speed), or high (quality)"
     )
 
 
 class TextContentPart(BaseModel):
     """Text content part in multimodal messages"""
+
     type: Literal["text"] = Field(default="text", description="Content type identifier")
     text: str = Field(description="Text content")
 
 
 class ImageUrlContentPart(BaseModel):
     """Image URL content part in multimodal messages (Phase 2: vision models)"""
+
     type: Literal["image_url"] = Field(default="image_url", description="Content type identifier")
     image_url: ImageUrlDetail = Field(description="Image URL and detail settings")
 
 
-ContentPart = Union[TextContentPart, ImageUrlContentPart]
-MessageContent = Union[str, List[ContentPart]]
+ContentPart = TextContentPart | ImageUrlContentPart
+MessageContent = str | list[ContentPart]
 
 
 def is_pdf_data(data: bytes) -> bool:
     """Check if data is a PDF file by checking magic bytes."""
-    return data[:4] == b'%PDF'
+    return data[:4] == b"%PDF"
 
 
-def convert_pdf_to_images(pdf_data: bytes, dpi: int = 150) -> List[Image.Image]:
+def convert_pdf_to_images(pdf_data: bytes, dpi: int = 150) -> list[Image.Image]:
     """
     Convert PDF data to list of PIL Images (one per page).
 
@@ -65,18 +66,19 @@ def convert_pdf_to_images(pdf_data: bytes, dpi: int = 150) -> List[Image.Image]:
     """
     try:
         from pdf2image import convert_from_bytes
+
         images = convert_from_bytes(pdf_data, dpi=dpi)
         logger.info(f"Converted PDF to {len(images)} image(s)")
         return images
-    except ImportError:
+    except ImportError as e:
         logger.error("pdf2image is not installed. Install with: pip install pdf2image")
-        raise ImportError("PDF support requires pdf2image. Install with: pip install pdf2image")
+        raise ImportError("PDF support requires pdf2image. Install with: pip install pdf2image") from e
     except Exception as e:
         logger.error(f"Failed to convert PDF to images: {e}")
-        raise ValueError(f"Failed to convert PDF: {str(e)}")
+        raise ValueError(f"Failed to convert PDF: {str(e)}") from e
 
 
-def decode_base64_to_images(base64_data: str) -> List[Image.Image]:
+def decode_base64_to_images(base64_data: str) -> list[Image.Image]:
     """
     Decode base64 data to list of PIL Images. Supports both images and PDFs.
 
@@ -94,7 +96,7 @@ def decode_base64_to_images(base64_data: str) -> List[Image.Image]:
     """
     try:
         # Extract base64 string from data URI if present
-        data_uri_match = re.match(r'^data:([a-zA-Z/]+);base64,(.+)$', base64_data)
+        data_uri_match = re.match(r"^data:([a-zA-Z/]+);base64,(.+)$", base64_data)
         if data_uri_match:
             mime_type = data_uri_match.group(1)
             base64_str = data_uri_match.group(2)
@@ -105,7 +107,7 @@ def decode_base64_to_images(base64_data: str) -> List[Image.Image]:
         data_bytes = base64.b64decode(base64_str)
 
         # Check if it's a PDF
-        if is_pdf_data(data_bytes) or (mime_type and 'pdf' in mime_type.lower()):
+        if is_pdf_data(data_bytes) or (mime_type and "pdf" in mime_type.lower()):
             logger.info("Detected PDF data, converting to images")
             return convert_pdf_to_images(data_bytes)
 
@@ -118,10 +120,10 @@ def decode_base64_to_images(base64_data: str) -> List[Image.Image]:
         raise
     except Exception as e:
         logger.error(f"Failed to decode base64 data: {e}")
-        raise ValueError(f"Invalid base64 data: {str(e)}")
+        raise ValueError(f"Invalid base64 data: {str(e)}") from e
 
 
-def decode_base64_image(base64_data: str) -> Optional[Image.Image]:
+def decode_base64_image(base64_data: str) -> Image.Image | None:
     """
     Decode base64 image data to PIL Image.
 
@@ -164,13 +166,13 @@ def fetch_image_from_url(url: str, timeout: int = 10) -> Image.Image:
         return image
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch image from URL: {e}")
-        raise ValueError(f"Failed to fetch image from URL: {str(e)}")
+        raise ValueError(f"Failed to fetch image from URL: {str(e)}") from e
     except Exception as e:
         logger.error(f"Failed to process image from URL: {e}")
-        raise ValueError(f"Failed to process image: {str(e)}")
+        raise ValueError(f"Failed to process image: {str(e)}") from e
 
 
-def preprocess_image_for_vision(image: Image.Image, target_size: Tuple[int, int] = (224, 224)) -> Image.Image:
+def preprocess_image_for_vision(image: Image.Image, target_size: tuple[int, int] = (224, 224)) -> Image.Image:
     """
     Preprocess image for vision model input.
 
@@ -182,18 +184,17 @@ def preprocess_image_for_vision(image: Image.Image, target_size: Tuple[int, int]
         Preprocessed PIL Image object
     """
     try:
-        image = image.convert('RGB')
+        image = image.convert("RGB")
         if image.size != target_size:
             image = image.resize(target_size, Image.Resampling.LANCZOS)
         logger.debug(f"Image preprocessed to size {target_size}")
         return image
     except Exception as e:
         logger.error(f"Failed to preprocess image: {e}")
-        raise ValueError(f"Failed to preprocess image: {str(e)}")
+        raise ValueError(f"Failed to preprocess image: {str(e)}") from e
 
 
-
-def extract_images_from_content(content: MessageContent) -> List[str]:
+def extract_images_from_content(content: MessageContent) -> list[str]:
     """
     Extract image URLs/base64 data from message content.
 
@@ -213,10 +214,10 @@ def extract_images_from_content(content: MessageContent) -> List[str]:
             if isinstance(part, ImageUrlContentPart):
                 images.append(part.image_url.url)
             elif isinstance(part, dict):
-                if part.get('type') == 'image_url':
-                    image_url = part.get('image_url', {})
+                if part.get("type") == "image_url":
+                    image_url = part.get("image_url", {})
                     if isinstance(image_url, dict):
-                        url = image_url.get('url', '')
+                        url = image_url.get("url", "")
                     else:
                         url = str(image_url)
                     if url:
@@ -275,9 +276,9 @@ def normalize_message_content(content: MessageContent, support_vision: bool = Fa
                         "Please use a vision-enabled model or remove image content."
                     )
             elif isinstance(part, dict):
-                part_type = part.get('type')
+                part_type = part.get("type")
                 if part_type == "text":
-                    text_parts.append(part.get('text', ''))
+                    text_parts.append(part.get("text", ""))
                 elif part_type == "image_url" and support_vision:
                     logger.warning(f"Image content at index {idx} requires vision model support")
                 elif part_type == "image_url" and not support_vision:
@@ -292,6 +293,4 @@ def normalize_message_content(content: MessageContent, support_vision: bool = Fa
 
         return "\n".join(text_parts)
 
-    raise TypeError(
-        f"Message content must be string or list, got {type(content).__name__}"
-    )
+    raise TypeError(f"Message content must be string or list, got {type(content).__name__}")
