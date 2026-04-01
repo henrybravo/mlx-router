@@ -17,13 +17,32 @@ else:
     custom_dir = Path.home() / "models"
 os.environ['HF_HUB_CACHE'] = str(custom_dir)
 
-from huggingface_hub import snapshot_download
+from huggingface_hub import get_token, snapshot_download
 from mlx_lm import load
 import gc
 
 def get_custom_model_dir():
     """Get custom model directory from environment or default"""
     return custom_dir
+
+
+def has_hf_auth_token():
+    """Return True when a Hugging Face auth token is available locally."""
+    try:
+        token = get_token()
+        return bool(token and token.strip())
+    except Exception:
+        return False
+
+
+def print_hf_auth_tip_if_needed():
+    """Warn when running without HF auth since anonymous downloads are often slower."""
+    if has_hf_auth_token():
+        return
+
+    print("⚠️  No Hugging Face auth token detected.", flush=True)
+    print("ℹ️  Anonymous downloads are usually slower and more rate-limited.", flush=True)
+    print("ℹ️  For faster/reliable downloads, run: hf auth login", flush=True)
 
 def download_model(model_name, verify=True, force_redownload=False, custom_dir=None):
     """Download and optionally verify an MLX model"""
@@ -73,6 +92,7 @@ def download_model(model_name, verify=True, force_redownload=False, custom_dir=N
 
     print(f"🔄 Downloading: {model_name}", flush=True)
     print(f"📁 Target directory: {custom_dir}", flush=True)
+    print_hf_auth_tip_if_needed()
 
     try:
         # Download model files
@@ -249,12 +269,33 @@ def list_mlx_models(custom_dir=None):
     return models
 
 
+def parse_cli_flags(argv):
+    """Parse common flags from argv and return remaining args + options."""
+    verify = True
+    force_redownload = False
+    remaining = []
+
+    for arg in argv:
+        if arg in {"--download-only", "--no-verify"}:
+            verify = False
+        elif arg == "--force-redownload":
+            force_redownload = True
+        else:
+            remaining.append(arg)
+
+    return remaining, verify, force_redownload
+
+
 def main():
     try:
-        if len(sys.argv) < 2:
+        args, verify, force_redownload = parse_cli_flags(sys.argv[1:])
+
+        if len(args) < 1:
             custom_dir = get_custom_model_dir()
             print("Enhanced MLX Model Downloader", flush=True)
             print(f"📁 Using model directory: {custom_dir}", flush=True)
+            auth_state = "authenticated" if has_hf_auth_token() else "not authenticated"
+            print(f"🔐 Hugging Face auth: {auth_state}", flush=True)
             print("Usage:", flush=True)
             print("  python3 mlx_downloader.py <model_name>        # Download or resume specific model", flush=True)
             print("  python3 mlx_downloader.py list                # List downloaded models with status", flush=True)
@@ -264,19 +305,24 @@ def main():
             print("  python3 mlx_downloader.py remove <model|num>  # Remove model completely", flush=True)
             print("  python3 mlx_downloader.py clean-all           # Clean all incomplete files", flush=True)
             print("", flush=True)
+            print("Flags:", flush=True)
+            print("  --download-only                              # Download or resume without mlx_lm verification", flush=True)
+            print("  --no-verify                                  # Alias for --download-only", flush=True)
+            print("  --force-redownload                           # Force fresh download from HF", flush=True)
+            print("", flush=True)
             print("Environment variables:", flush=True)
             print("  MLX_MODEL_DIR=/path/to/models               # Custom model directory", flush=True)
             print("", flush=True)
             list_mlx_models(custom_dir)
             return
-        
-        command = sys.argv[1]
+
+        command = args[0]
         
         if command == "list":
             custom_dir = get_custom_model_dir()
             list_mlx_models(custom_dir)
 
-        elif command == "download" and len(sys.argv) == 3:
+        elif command == "download" and len(args) == 2:
             try:
                 custom_dir = get_custom_model_dir()
                 models = discover_local_models(custom_dir)
@@ -284,17 +330,22 @@ def main():
                     print("❌ No models found in cache directory. Use direct model name to download new models.", flush=True)
                     return
 
-                index = int(sys.argv[2]) - 1
+                index = int(args[1]) - 1
                 if 0 <= index < len(models):
                     model_name = models[index]
-                    download_model(model_name, custom_dir=custom_dir)
+                    download_model(
+                        model_name,
+                        verify=verify,
+                        force_redownload=force_redownload,
+                        custom_dir=custom_dir,
+                    )
                 else:
                     print(f"❌ Invalid number. Choose 1-{len(models)}", flush=True)
             except ValueError:
                 print("❌ Please provide a valid number", flush=True)
 
-        elif command == "status" and len(sys.argv) == 3:
-            model_arg = sys.argv[2]
+        elif command == "status" and len(args) == 2:
+            model_arg = args[1]
             custom_dir = get_custom_model_dir()
 
             try:
@@ -321,8 +372,8 @@ def main():
                 if status == "incomplete":
                     print(f"   Incomplete files: {[f.name for f in files]}", flush=True)
 
-        elif command == "clean" and len(sys.argv) == 3:
-            model_arg = sys.argv[2]
+        elif command == "clean" and len(args) == 2:
+            model_arg = args[1]
             custom_dir = get_custom_model_dir()
 
             try:
@@ -341,8 +392,8 @@ def main():
                 model_name = model_arg
                 clean_incomplete_model(model_name, custom_dir)
 
-        elif command == "remove" and len(sys.argv) == 3:
-            model_arg = sys.argv[2]
+        elif command == "remove" and len(args) == 2:
+            model_arg = args[1]
             custom_dir = get_custom_model_dir()
 
             try:
@@ -380,9 +431,14 @@ def main():
             print(f"🧹 Cleaned incomplete files for {cleaned_count} models", flush=True)
 
         else:
-            model_name = sys.argv[1]
+            model_name = args[0]
             custom_dir = get_custom_model_dir()
-            download_model(model_name, custom_dir=custom_dir)
+            download_model(
+                model_name,
+                verify=verify,
+                force_redownload=force_redownload,
+                custom_dir=custom_dir,
+            )
     
     except Exception as e:
         print(f"❌ Script failed: {e}", flush=True)
