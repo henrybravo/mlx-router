@@ -154,6 +154,14 @@ def get_model_status(model_name, custom_dir=None):
 
     blobs_path = model_path / "blobs"
     if not blobs_path.exists():
+        # Check for flat/direct layout (hf download --local-dir writes files directly)
+        direct_files = list(model_path.glob("*"))
+        has_weights = any(
+            f.suffix == ".safetensors" or f.name == "config.json"
+            for f in direct_files if f.is_file()
+        )
+        if has_weights:
+            return "complete", model_path, direct_files
         return "no_blobs", model_path, []
 
     # Check for incomplete files
