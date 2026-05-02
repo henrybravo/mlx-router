@@ -76,8 +76,114 @@ class MLXModelManager:
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.start_time = time.time()
         self.request_count = 0
+        # Idle-unload TTL: auto-unload current model after N seconds of inactivity (0 = disabled)
+        self.last_request_ts: float = time.time()
+        self.idle_unload_seconds: int = 0
+        self._idle_scan_thread = None
+        self._idle_scan_stop = threading.Event()
+        self._idle_scan_interval: float = 30.0
+        # Track in-flight generations so the idle scanner does not unload the model mid-generation.
+        self._active_generations: int = 0
+        self._gen_count_lock = threading.Lock()
         self.available_models = self._validate_models()
         logger.info(f"Validated {len(self.available_models)} available models")
+
+    def _touch(self) -> None:
+        """Update last-request timestamp (called on load/generation entry)."""
+        self.last_request_ts = time.time()
+
+    def _begin_generation(self) -> None:
+        """Mark a generation as in-flight so the idle scanner does not unload mid-stream.
+
+        Acquires model_lock to serialize against the scanner's unload path: if the scanner
+        is mid-unload we wait; once it releases, _generate_response_impl will see
+        current_model=None and surface a clean error instead of reading a torn state.
+        """
+        self._touch()
+        with self.model_lock:
+            with self._gen_count_lock:
+                self._active_generations += 1
+
+    def _end_generation(self) -> None:
+        """Mark a generation finished. Pair with _begin_generation in try/finally."""
+        with self._gen_count_lock:
+            if self._active_generations > 0:
+                self._active_generations -= 1
+
+    def set_idle_unload_seconds(self, seconds: int) -> None:
+        """Configure idle TTL. >0 starts background scan thread; 0 disables and stops it.
+
+        Always joins any prior scan thread before starting a new one, so 0 → N transitions
+        cannot race with a not-yet-exited scanner.
+        """
+        seconds = max(0, int(seconds))
+        self.idle_unload_seconds = seconds
+        # Stop any existing scanner first
+        if self._idle_scan_thread is not None and self._idle_scan_thread.is_alive():
+            self._idle_scan_stop.set()
+            self._idle_scan_thread.join(timeout=5.0)
+        self._idle_scan_thread = None
+        if seconds > 0:
+            self._idle_scan_stop.clear()
+            self._idle_scan_thread = threading.Thread(
+                target=self._idle_scan_loop, name="mlx-router-idle-ttl", daemon=True
+            )
+            self._idle_scan_thread.start()
+            logger.info(
+                f"Idle unload TTL enabled: {seconds}s (scan every {self._idle_scan_interval:.0f}s)"
+            )
+        else:
+            logger.info("Idle unload TTL disabled")
+
+    def _idle_scan_loop(self) -> None:
+        """Background loop: unload current model when idle exceeds TTL.
+
+        Defers unload while any generation is in flight (active_generations > 0); the next
+        scan tick will unload if the model is still idle. This avoids reading None from
+        self.current_model mid-generation since generate_response/generate_stream_response
+        do NOT hold model_lock for the whole duration.
+        """
+        while not self._idle_scan_stop.wait(self._idle_scan_interval):
+            try:
+                if self.idle_unload_seconds <= 0 or not self.current_model_name:
+                    continue
+                idle = time.time() - self.last_request_ts
+                if idle < self.idle_unload_seconds:
+                    continue
+                with self.model_lock:
+                    # Re-check inside lock — load_model / _touch may have raced
+                    if not self.current_model_name:
+                        continue
+                    idle = time.time() - self.last_request_ts
+                    if idle < self.idle_unload_seconds:
+                        continue
+                    # Don't unload while a generation is in flight; try again next tick.
+                    # If the counter appears leaked (e.g. async generator finally was skipped on
+                    # client disconnect), force-reset after a generous grace window — better to
+                    # rebuild fresh than leak GBs of model memory forever.
+                    with self._gen_count_lock:
+                        in_flight = self._active_generations
+                    if in_flight > 0:
+                        grace_threshold = max(self.idle_unload_seconds * 4, 300)
+                        if idle < grace_threshold:
+                            logger.debug(
+                                f"[idle-TTL] deferring unload, {in_flight} generation(s) in flight "
+                                f"(idle {idle:.0f}s < grace {grace_threshold:.0f}s)"
+                            )
+                            continue
+                        logger.warning(
+                            f"[idle-TTL] in-flight counter ({in_flight}) appears leaked after "
+                            f"{idle:.0f}s idle (>{grace_threshold:.0f}s grace), forcing reset and unload"
+                        )
+                        with self._gen_count_lock:
+                            self._active_generations = 0
+                    logger.info(
+                        f"[idle-TTL] auto-unloading {self.current_model_name} "
+                        f"after {idle:.0f}s idle (threshold {self.idle_unload_seconds}s)"
+                    )
+                    self._unload_current_model()
+            except Exception as e:
+                logger.warning(f"[idle-TTL] scan loop error: {e}")
 
     def refresh_available_models(self):
         """Refresh available models after configuration changes"""
@@ -92,6 +198,11 @@ class MLXModelManager:
 
     def shutdown(self):
         """Properly shutdown the executor and clean up resources"""
+        # Stop idle-TTL scan thread first so it doesn't race with executor shutdown
+        if hasattr(self, "_idle_scan_stop"):
+            self._idle_scan_stop.set()
+        if getattr(self, "_idle_scan_thread", None) is not None:
+            self._idle_scan_thread.join(timeout=5.0)
         if hasattr(self, "executor"):
             self.executor.shutdown(wait=True)
             logger.info("MLXModelManager executor shut down")
@@ -181,6 +292,7 @@ class MLXModelManager:
         return ModelConfig.suggest_best_model_for_memory(mem_info["available_gb"], prefer_performance=prefer_perf)
 
     def load_model(self, model_name):
+        self._touch()
         if not model_name:
             raise ValueError(f"Invalid model name: {model_name}")
 
@@ -514,7 +626,18 @@ class MLXModelManager:
     def generate_response(
         self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None, images=None
     ):
-        """Generate response with timeout protection and optional tool support"""
+        """Generate response with timeout protection and optional tool support."""
+        self._begin_generation()
+        try:
+            return self._generate_response_impl(
+                messages, tools, max_tokens, temperature, top_p, top_k, min_p, images
+            )
+        finally:
+            self._end_generation()
+
+    def _generate_response_impl(
+        self, messages, tools=None, max_tokens=None, temperature=None, top_p=None, top_k=None, min_p=None, images=None
+    ):
         if not self.current_model:
             logger.error("Generation attempted without a loaded model.")
             return {
@@ -621,12 +744,33 @@ class MLXModelManager:
         images=None,
         stream_chunk_size=None,
     ):
-        """Generate streaming response for real-time token delivery
+        """Generate streaming response for real-time token delivery.
 
         Args:
             stream_chunk_size: Buffer size for streaming tokens (default: 8). Higher values may improve
                              throughput but increase latency. Lower values give more real-time delivery.
         """
+        self._begin_generation()
+        try:
+            async for chunk in self._generate_stream_response_impl(
+                messages, tools, max_tokens, temperature, top_p, top_k, min_p, images, stream_chunk_size
+            ):
+                yield chunk
+        finally:
+            self._end_generation()
+
+    async def _generate_stream_response_impl(
+        self,
+        messages,
+        tools=None,
+        max_tokens=None,
+        temperature=None,
+        top_p=None,
+        top_k=None,
+        min_p=None,
+        images=None,
+        stream_chunk_size=None,
+    ):
         if not self.current_model:
             logger.error("Streaming generation attempted without a loaded model.")
             yield "ERROR: No model loaded. Please select a model first."

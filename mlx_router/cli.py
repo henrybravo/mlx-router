@@ -137,6 +137,13 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=120, help="Generation timeout in seconds (default: 120)")
     parser.add_argument("--config", help="Path to config.json")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument(
+        "--idle-unload-seconds",
+        type=int,
+        default=0,
+        help="Auto-unload current model after N seconds of inactivity (0 = disabled). "
+        "Can also be set via config.json defaults.idle_unload_seconds.",
+    )
     return parser.parse_args()
 
 
@@ -211,6 +218,8 @@ def main() -> None:
 
             args.max_tokens = defaults.get("max_tokens", args.max_tokens)
             args.timeout = defaults.get("timeout", args.timeout)
+            if args.idle_unload_seconds == 0:
+                args.idle_unload_seconds = int(defaults.get("idle_unload_seconds", 0))
             if args.ip == "0.0.0.0":
                 args.ip = server_cfg.get("ip", args.ip)
             if args.port == 8800:
@@ -239,6 +248,8 @@ def main() -> None:
     )
 
     model_manager = MLXModelManager(max_tokens=args.max_tokens, timeout=args.timeout)
+    if args.idle_unload_seconds and args.idle_unload_seconds > 0:
+        model_manager.set_idle_unload_seconds(args.idle_unload_seconds)
 
     def _shutdown(signum: object = None, frame: object = None) -> None:
         logger.info("Shutting down MLX Router…")
